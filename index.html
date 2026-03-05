@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <!-- Viewport definition for mobile-first PWA -->
@@ -9,6 +10,7 @@
     <!-- Theme color for PWA -->
     <meta name="theme-color" content="#f8f9fa">
 </head>
+
 <body>
     <div id="app">
         <!-- Main Screen -->
@@ -22,7 +24,8 @@
                 </ul>
                 <button id="add-plan-btn" class="fab" aria-label="Add Plan">
                     <!-- Plus Icon -->
-                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                        stroke-linecap="round" stroke-linejoin="round">
                         <line x1="12" y1="5" x2="12" y2="19"></line>
                         <line x1="5" y1="12" x2="19" y2="12"></line>
                     </svg>
@@ -35,7 +38,8 @@
             <header class="app-header">
                 <button id="back-btn" class="icon-btn" aria-label="Back">
                     <!-- Back Icon -->
-                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                        stroke-linecap="round" stroke-linejoin="round">
                         <line x1="19" y1="12" x2="5" y2="12"></line>
                         <polyline points="12 19 5 12 12 5"></polyline>
                     </svg>
@@ -43,6 +47,35 @@
                 <h1 id="plan-title">Plan Name</h1>
             </header>
             <div class="content">
+                <div style="margin-bottom: 24px; text-align: center;">
+                    <button id="guidelines-btn" class="btn btn-secondary" style="width: 100%;">Diet Guidelines</button>
+                </div>
+
+                <!-- NEW: Date Planning Section -->
+                <div class="planner-section card" style="margin-bottom: 24px;">
+                    <h3 style="margin-bottom: 12px; font-size: 1.125rem;">Schedule</h3>
+                    <div style="display: flex; gap: 12px; margin-bottom: 16px; align-items: center;">
+                        <input type="date" id="plan-date-input" class="btn btn-secondary"
+                            style="flex-grow: 1; padding: 10px; font-family: inherit; font-size: 1rem; text-align: center;" />
+                        <button id="plan-date-btn" class="btn btn-primary" style="padding: 10px 16px;">Plan
+                            Date</button>
+                    </div>
+
+                    <div id="active-planning-controls"
+                        style="display: none; margin-bottom: 16px; padding: 12px; background: var(--gray-light); border-radius: 12px; text-align: center;">
+                        <p style="margin-bottom: 8px; font-weight: 600;">Planning for: <span
+                                id="active-planning-date-display"></span></p>
+                        <div style="display: flex; gap: 8px;">
+                            <button id="cancel-planning-btn" class="btn btn-secondary" style="flex: 1;">Cancel</button>
+                            <button id="confirm-menu-btn" class="btn btn-primary" style="flex: 2;">Confirm Menu</button>
+                        </div>
+                    </div>
+
+                    <div id="scheduled-dates-list" style="display: flex; flex-direction: column; gap: 8px;">
+                        <!-- Rendered list of saved dates -->
+                    </div>
+                </div>
+
                 <div id="categories-container" class="categories">
                     <!-- Diet categories (Breakfast, Lunch, etc.) will be rendered here -->
                 </div>
@@ -62,6 +95,67 @@
         </div>
     </div>
 
+    <!-- Guidelines Modal -->
+    <div id="guidelines-modal" class="modal">
+        <div class="modal-content card" style="max-height: 80vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h2 style="margin: 0;">Diet Guidelines</h2>
+                <button id="close-guidelines-btn" class="icon-btn" aria-label="Close">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+
+            <ul style="padding-left: 20px; line-height: 1.6;">
+                <li><strong>Protein Importance:</strong> Target 120g/day.</li>
+                <li><strong>Calorie Strategy:</strong> 5-week hard phase.</li>
+                <li><strong>Supplements:</strong> Vitamin D, L-Carnitine, Taurine, Tryptophan.</li>
+                <li><strong>Fiber:</strong> Chia seeds, 10g.</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Daily Menu Modal -->
+    <div id="daily-menu-modal" class="modal">
+        <div class="modal-content card" style="max-height: 80vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h2 style="margin: 0;" id="daily-menu-title">Menu</h2>
+                <button id="close-daily-menu-btn" class="icon-btn" aria-label="Close">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div id="daily-menu-content" style="margin-bottom: 20px;"></div>
+            <button id="generate-shopping-btn" class="btn btn-primary" style="width: 100%;">Generate Shopping
+                List</button>
+        </div>
+    </div>
+
+    <!-- Shopping List Modal -->
+    <div id="shopping-list-modal" class="modal">
+        <div class="modal-content card" style="max-height: 80vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h2 style="margin: 0;">Shopping List</h2>
+                <button id="close-shopping-list-btn" class="icon-btn" aria-label="Close">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <ul id="shopping-list-content" style="padding-left: 20px; line-height: 1.6; margin-bottom: 20px;"></ul>
+            <button id="copy-shopping-btn" class="btn btn-primary" style="width: 100%;">Copy to Clipboard</button>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
+
 </html>
