@@ -41,7 +41,7 @@ const defaultData = [
                 { id: "b2", text: "Oatmeal with Nuts, Fruits, and Chia Seeds", ingredients: [{ n: "Oats", a: 50, u: "g" }, { n: "Milk", a: 70, u: "ml" }, { n: "Fruit", a: 100, u: "g" }, { n: "Peanut Paste", a: 15, u: "g" }, { n: "Nuts", a: 15, u: "g" }, { n: "Chia Seeds", a: 10, u: "g" }] }
             ],
             "Lunch": [
-                { id: "l1", text: "Buckwheat/Rice/Pasta + Tuna Salad", ingredients: [{ n: "Buckwheat/Rice/Pasta", a: 150, u: "g" }, { n: "Tuna", a: 130, u: "g" }, { n: "Lettuce", a: 100, u: "g" }, { n: "Vegetables", a: 200, u: "g" }, { n: "Eggs", a: 1, u: "pcs" }] },
+                { id: "l1", text: "Buckwheat / Rice / Pasta + Tuna Salad", ingredients: [{ n: "Buckwheat/Rice/Pasta", a: 150, u: "g" }, { n: "Tuna", a: 130, u: "g" }, { n: "Lettuce", a: 100, u: "g" }, { n: "Vegetables", a: 200, u: "g" }, { n: "Eggs", a: 1, u: "pcs" }] },
                 { id: "l2", text: "Pasta with Eggs or Minced Meat + Zucchini", ingredients: [{ n: "Pasta", a: 150, u: "g" }, { n: "Minced Meat", a: 80, u: "g" }, { n: "Cheese", a: 25, u: "g" }, { n: "Oil", a: 1, u: "tsp" }, { n: "Zucchini", a: 100, u: "g" }] }
             ],
             "Dinner 1": [
@@ -81,6 +81,25 @@ const confirmMenuBtn = document.getElementById('confirm-menu-btn');
 const cancelPlanningBtn = document.getElementById('cancel-planning-btn');
 const scheduledDatesList = document.getElementById('scheduled-dates-list');
 
+// Date Planning & Editing Modals
+const openDatePickerBtn = document.getElementById('open-date-picker-btn');
+const datePickerModal = document.getElementById('date-picker-modal');
+const cancelDateBtn = document.getElementById('cancel-date-btn');
+
+const editMealModal = document.getElementById('edit-meal-modal');
+const editMealText = document.getElementById('edit-meal-text');
+const editMealIngredients = document.getElementById('edit-meal-ingredients');
+const editMealCategory = document.getElementById('edit-meal-category');
+const editMealId = document.getElementById('edit-meal-id');
+const cancelEditBtn = document.getElementById('cancel-edit-btn');
+const saveEditBtn = document.getElementById('save-edit-btn');
+
+const addCategoryBtn = document.getElementById('add-category-btn');
+const addCategoryModal = document.getElementById('add-category-modal');
+const newCategoryName = document.getElementById('new-category-name');
+const cancelCategoryBtn = document.getElementById('cancel-category-btn');
+const saveCategoryBtn = document.getElementById('save-category-btn');
+
 // Buttons / Layout elements
 const backBtn = document.getElementById('back-btn');
 const addPlanBtn = document.getElementById('add-plan-btn');
@@ -92,6 +111,12 @@ const savePlanBtn = document.getElementById('save-plan-btn');
 const guidelinesBtn = document.getElementById('guidelines-btn');
 const guidelinesModal = document.getElementById('guidelines-modal');
 const closeGuidelinesBtn = document.getElementById('close-guidelines-btn');
+const editGuidelinesBtn = document.getElementById('edit-guidelines-btn');
+const guidelinesDisplay = document.getElementById('guidelines-display');
+const guidelinesEditor = document.getElementById('guidelines-editor');
+const guidelinesActions = document.getElementById('guidelines-actions');
+const cancelGuidelinesBtn = document.getElementById('cancel-guidelines-btn');
+const saveGuidelinesBtn = document.getElementById('save-guidelines-btn');
 
 // Menu & Shopping List Modals
 const dailyMenuModal = document.getElementById('daily-menu-modal');
@@ -104,14 +129,22 @@ const shoppingListModal = document.getElementById('shopping-list-modal');
 const closeShoppingListBtn = document.getElementById('close-shopping-list-btn');
 const shoppingListContent = document.getElementById('shopping-list-content');
 const copyShoppingBtn = document.getElementById('copy-shopping-btn');
+const themeToggleBtn = document.getElementById('theme-toggle');
 
 let currentlyViewingDate = null;
 
 // Bootstrap Application
 function init() {
+    initTheme();
     loadData();
     renderMainScreen();
     setupEventListeners();
+}
+
+// Theme Management
+function initTheme() {
+    const savedTheme = localStorage.getItem('platemate_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
 }
 
 // Persist Data using LocalStorage
@@ -219,7 +252,7 @@ function renderPlanDetails() {
                 dailyMenuTitle.textContent = `Menu for ${dateString}`;
 
                 let menuHtml = '';
-                STANDARD_CATEGORIES.forEach(cat => {
+                Object.keys(plan.categories).forEach(cat => {
                     const selId = plan.schedule[date][cat];
                     if (selId && plan.categories[cat]) {
                         const variant = plan.categories[cat].find(v => v.id === selId);
@@ -258,10 +291,12 @@ function renderPlanDetails() {
             dateString = dateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
         } catch (e) { }
         activePlanningDateDisplay.textContent = dateString;
+        if (openDatePickerBtn) openDatePickerBtn.style.display = 'none';
         if (planDateInput) planDateInput.disabled = true;
         if (planDateBtn) planDateBtn.disabled = true;
     } else if (activePlanningControls) {
         activePlanningControls.style.display = 'none';
+        if (openDatePickerBtn) openDatePickerBtn.style.display = 'block';
         if (planDateInput) planDateInput.disabled = false;
         if (planDateBtn) planDateBtn.disabled = false;
     }
@@ -269,7 +304,7 @@ function renderPlanDetails() {
     categoriesContainer.innerHTML = '';
 
     // Render Categories
-    STANDARD_CATEGORIES.forEach(cat => {
+    Object.keys(plan.categories).forEach(cat => {
         const catCard = document.createElement('div');
         catCard.className = 'category-card';
         catCard.setAttribute('data-type', cat);
@@ -294,29 +329,104 @@ function renderPlanDetails() {
             });
         }
 
+        let addFoodHtml = `
+            <div class="add-food-sticker" data-category-type="${cat}" style="display:flex; align-items:center; justify-content:center; border: 2px dashed var(--gray-light); background: transparent; color: var(--text-color); cursor: pointer; width: 100%; min-height: 48px; border-radius: 12px; margin-top: 12px; transition: all 0.2s ease;">
+                <span style="font-weight: 600; font-size: 0.95rem;">+ Add Food</span>
+            </div>
+        `;
+
         catCard.innerHTML = `
-                    <h3>${cat}</h3>
-                        <div class="food-stickers">
-                            ${stickersHtml}
-                        </div>
-                `;
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="margin: 0;">${cat}</h3>
+                <button class="icon-btn delete-category-btn" data-category-type="${cat}" style="color: #dc3545; padding: 4px;">
+                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="food-stickers">
+                ${stickersHtml}
+            </div>
+            ${addFoodHtml}
+        `;
         categoriesContainer.appendChild(catCard);
     });
+}
 
-    // Add event listeners for variant selection
-    document.querySelectorAll('.variant-sticker').forEach(sticker => {
-        sticker.addEventListener('click', (e) => {
+// Attach standard DOM Event Listeners
+function setupEventListeners() {
+    // Top-Level Event Delegation for Categories Container (Add food, delete category, edit/select variant)
+    categoriesContainer.addEventListener('click', (e) => {
+        // Delete Category check
+        const delCatBtn = e.target.closest('.delete-category-btn');
+        if (delCatBtn) {
+            if (confirm("Delete this entire category and all its meals?")) {
+                const catType = delCatBtn.getAttribute('data-category-type');
+                const plan = plans.find(p => p.id === currentPlanId);
+                if (plan && plan.categories[catType]) {
+                    delete plan.categories[catType];
+                    if (plan.schedule) {
+                        for (let date in plan.schedule) {
+                            if (plan.schedule[date][catType]) {
+                                delete plan.schedule[date][catType];
+                            }
+                        }
+                    }
+                    if (tempSelections[catType]) delete tempSelections[catType];
+                    saveData();
+                    renderPlanDetails();
+                }
+            }
+            return;
+        }
+
+        // Add Food check
+        const addFoodBtn = e.target.closest('.add-food-sticker');
+        if (addFoodBtn) {
+            const catType = addFoodBtn.getAttribute('data-category-type');
+            editMealCategory.value = catType;
+            editMealId.value = 'new';
+            editMealText.value = '';
+            editMealIngredients.value = '';
+            if (document.getElementById('delete-meal-btn')) document.getElementById('delete-meal-btn').style.display = 'none';
+            editMealModal.classList.add('active');
+            return;
+        }
+
+        // Edit variant check
+        const editBtn = e.target.closest('.edit-sticker-btn');
+        if (editBtn) {
+            const sticker = editBtn.closest('.variant-sticker');
+            if (sticker) {
+                const variantId = sticker.getAttribute('data-variant-id');
+                const catType = sticker.getAttribute('data-category-type');
+                const plan = plans.find(p => p.id === currentPlanId);
+                const variant = plan.categories[catType].find(v => v.id === variantId);
+
+                editMealCategory.value = catType;
+                editMealId.value = variantId;
+                editMealText.value = variant.text;
+
+                let ingsText = (variant.ingredients || []).map(ing => `${ing.n}: ${ing.a} ${ing.u}`).join('\n');
+                editMealIngredients.value = ingsText;
+
+                if (document.getElementById('delete-meal-btn')) document.getElementById('delete-meal-btn').style.display = 'block';
+                editMealModal.classList.add('active');
+            }
+            return;
+        }
+
+        // Select variant check (only if planning mode)
+        const sticker = e.target.closest('.variant-sticker');
+        if (sticker) {
             if (!activePlanningDate) {
-                // If they click a sticker without a date picked
-                alert("Please select a date and press 'Plan Date' first.");
+                // Completely disable click event interaction unless active planning mode
                 return;
             }
-            if (e.target.closest('.edit-sticker-btn')) return;
 
             const variantId = sticker.getAttribute('data-variant-id');
             const catType = sticker.getAttribute('data-category-type');
 
-            // Toggle or set selection for active date
             if (tempSelections[catType] === variantId) {
                 tempSelections[catType] = null;
             } else {
@@ -324,17 +434,24 @@ function renderPlanDetails() {
             }
 
             renderPlanDetails();
-        });
+        }
     });
-}
 
-// Attach standard DOM Event Listeners
-function setupEventListeners() {
     // Back navigation
     backBtn.addEventListener('click', () => {
         currentPlanId = null;
         navigateTo('main-screen');
     });
+
+    // Theme Toggle Logic
+    if (themeToggleBtn) {
+        themeToggleBtn.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('platemate_theme', newTheme);
+        });
+    }
 
     // Modal controls
     addPlanBtn.addEventListener('click', () => {
@@ -353,7 +470,10 @@ function setupEventListeners() {
         if (name) {
             const newPlan = {
                 id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(),
-                name: name
+                name: name,
+                schedule: {},
+                categories: {},
+                guidelines: ""
             };
             plans.push(newPlan);
             saveData();
@@ -372,6 +492,14 @@ function setupEventListeners() {
     // Guidelines Modal Logic
     if (guidelinesBtn) {
         guidelinesBtn.addEventListener('click', () => {
+            const plan = plans.find(p => p.id === currentPlanId);
+            if (plan) {
+                guidelinesDisplay.textContent = plan.guidelines || "No custom guidelines set for this plan. Click Edit to add some.";
+                guidelinesDisplay.style.display = 'block';
+                guidelinesEditor.style.display = 'none';
+                guidelinesActions.style.display = 'none';
+                if (editGuidelinesBtn) editGuidelinesBtn.style.display = 'block';
+            }
             guidelinesModal.classList.add('active');
         });
     }
@@ -382,11 +510,91 @@ function setupEventListeners() {
         });
     }
 
+    if (editGuidelinesBtn) {
+        editGuidelinesBtn.addEventListener('click', () => {
+            const plan = plans.find(p => p.id === currentPlanId);
+            if (plan) {
+                guidelinesEditor.value = plan.guidelines || "";
+                guidelinesDisplay.style.display = 'none';
+                editGuidelinesBtn.style.display = 'none';
+                guidelinesEditor.style.display = 'block';
+                guidelinesActions.style.display = 'flex';
+            }
+        });
+    }
+
+    if (cancelGuidelinesBtn) {
+        cancelGuidelinesBtn.addEventListener('click', () => {
+            guidelinesDisplay.style.display = 'block';
+            guidelinesEditor.style.display = 'none';
+            guidelinesActions.style.display = 'none';
+            if (editGuidelinesBtn) editGuidelinesBtn.style.display = 'block';
+        });
+    }
+
+    if (saveGuidelinesBtn) {
+        saveGuidelinesBtn.addEventListener('click', () => {
+            const plan = plans.find(p => p.id === currentPlanId);
+            if (plan) {
+                plan.guidelines = guidelinesEditor.value;
+                saveData();
+                guidelinesDisplay.textContent = plan.guidelines || "No custom guidelines set for this plan. Click Edit to add some.";
+                guidelinesDisplay.style.display = 'block';
+                guidelinesEditor.style.display = 'none';
+                guidelinesActions.style.display = 'none';
+                if (editGuidelinesBtn) editGuidelinesBtn.style.display = 'block';
+            }
+        });
+    }
+
     guidelinesModal.addEventListener('click', (e) => {
         if (e.target === guidelinesModal) {
             guidelinesModal.classList.remove('active');
         }
     });
+
+    if (addCategoryBtn) {
+        addCategoryBtn.addEventListener('click', () => {
+            if (newCategoryName) newCategoryName.value = '';
+            if (addCategoryModal) addCategoryModal.classList.add('active');
+            if (newCategoryName) newCategoryName.focus();
+        });
+    }
+
+    if (cancelCategoryBtn) {
+        cancelCategoryBtn.addEventListener('click', () => {
+            if (addCategoryModal) addCategoryModal.classList.remove('active');
+        });
+    }
+
+    if (saveCategoryBtn) {
+        saveCategoryBtn.addEventListener('click', () => {
+            const plan = plans.find(p => p.id === currentPlanId);
+            if (plan && newCategoryName) {
+                const catName = newCategoryName.value.trim();
+                if (catName && !plan.categories[catName]) {
+                    plan.categories[catName] = [];
+                    saveData();
+                    renderPlanDetails();
+                }
+            }
+            if (addCategoryModal) addCategoryModal.classList.remove('active');
+        });
+    }
+
+    if (openDatePickerBtn) {
+        openDatePickerBtn.addEventListener('click', () => {
+            const today = new Date().toISOString().split('T')[0];
+            if (planDateInput && !planDateInput.value) planDateInput.value = today;
+            datePickerModal.classList.add('active');
+        });
+    }
+
+    if (cancelDateBtn) {
+        cancelDateBtn.addEventListener('click', () => {
+            datePickerModal.classList.remove('active');
+        });
+    }
 
     if (planDateBtn) {
         planDateInput.addEventListener('input', () => {
@@ -403,7 +611,72 @@ function setupEventListeners() {
             const plan = plans.find(p => p.id === currentPlanId);
             if (!plan.schedule) plan.schedule = {};
             tempSelections = plan.schedule[dateStr] ? { ...plan.schedule[dateStr] } : {};
+            datePickerModal.classList.remove('active');
             renderPlanDetails();
+        });
+    }
+
+    if (cancelEditBtn) {
+        cancelEditBtn.addEventListener('click', () => {
+            editMealModal.classList.remove('active');
+        });
+    }
+
+    if (saveEditBtn) {
+        saveEditBtn.addEventListener('click', () => {
+            const plan = plans.find(p => p.id === currentPlanId);
+            const variantId = editMealId.value;
+            const catType = editMealCategory.value;
+
+            const parsedIngs = parseIngredients(editMealIngredients.value);
+
+            if (variantId === 'new') {
+                const newVariant = {
+                    id: 'v_' + ((window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString()),
+                    text: editMealText.value || 'New Meal',
+                    ingredients: parsedIngs
+                };
+                if (!plan.categories[catType]) plan.categories[catType] = [];
+                plan.categories[catType].push(newVariant);
+            } else {
+                const variant = plan.categories[catType].find(v => v.id === variantId);
+                if (variant) {
+                    variant.text = editMealText.value;
+                    variant.ingredients = parsedIngs;
+                }
+            }
+            saveData();
+            renderPlanDetails();
+            editMealModal.classList.remove('active');
+        });
+    }
+
+    const deleteMealBtn = document.getElementById('delete-meal-btn');
+    if (deleteMealBtn) {
+        deleteMealBtn.addEventListener('click', () => {
+            if (confirm("Are you sure you want to delete this meal?")) {
+                const plan = plans.find(p => p.id === currentPlanId);
+                const variantId = editMealId.value;
+                const catType = editMealCategory.value;
+
+                if (plan && plan.categories[catType]) {
+                    plan.categories[catType] = plan.categories[catType].filter(v => v.id !== variantId);
+
+                    if (tempSelections[catType] === variantId) {
+                        tempSelections[catType] = null;
+                    }
+                    if (plan.schedule) {
+                        for (let date in plan.schedule) {
+                            if (plan.schedule[date][catType] === variantId) {
+                                delete plan.schedule[date][catType];
+                            }
+                        }
+                    }
+                }
+                saveData();
+                renderPlanDetails();
+                editMealModal.classList.remove('active');
+            }
         });
     }
 
@@ -449,7 +722,7 @@ function setupEventListeners() {
             const selections = plan.schedule[currentlyViewingDate];
             const shoppingMap = {};
 
-            STANDARD_CATEGORIES.forEach(cat => {
+            Object.keys(plan.categories).forEach(cat => {
                 const selId = selections[cat];
                 if (selId && plan.categories[cat]) {
                     const variant = plan.categories[cat].find(v => v.id === selId);
@@ -468,15 +741,14 @@ function setupEventListeners() {
             let listHtml = '';
             Object.values(shoppingMap).sort((a, b) => a.n.localeCompare(b.n))
                 .forEach(ing => {
-                    listHtml += `<li style="margin-bottom: 6px;">
-                    <label style="display:flex; align-items:center; gap:8px;">
-                        <input type="checkbox" style="transform: scale(1.2);">
-                            <span>${ing.n}: <strong>${ing.a} ${ing.u}</strong></span>
-                    </label>
-                    </li>`;
+                    listHtml += `<div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px;">
+                        <input type="checkbox" style="transform: scale(1.2); flex: 0 0 30px;">
+                        <span>${ing.n}</span>
+                        <strong style="margin-left: auto;">${ing.a} ${ing.u}</strong>
+                    </div>`;
                 });
 
-            if (!listHtml) listHtml = '<li>No ingredients found</li>';
+            if (!listHtml) listHtml = '<div style="margin-bottom: 8px;">No ingredients found</div>';
             shoppingListContent.innerHTML = listHtml;
 
             dailyMenuModal.classList.remove('active');
@@ -497,6 +769,36 @@ function setupEventListeners() {
             });
         });
     }
+}
+
+// Ingredient Parser logic for Edit Modal
+function parseIngredients(text) {
+    if (!text || !text.trim()) return [];
+    const lines = text.split('\n');
+    const ings = [];
+    for (let line of lines) {
+        line = line.trim();
+        if (!line) continue;
+        // e.g. "Milk: 100 ml", "- Milk: 100ml", "Oats: 30g", or "Apple"
+        line = line.replace(/^[-•*]\s*/, '');
+        if (line.includes(':')) {
+            const parts = line.split(':');
+            const name = parts.shift().trim();
+            const amountUnit = parts.join(':').trim();
+            // Handle cases where number and unit don't have a space (e.g. 30g)
+            const numMatch = amountUnit.match(/^([\d.,]+)\s*(.*)$/);
+            if (numMatch) {
+                const val = parseFloat(numMatch[1].replace(',', '.'));
+                ings.push({ n: name, a: isNaN(val) ? 1 : val, u: numMatch[2] || 'unit' });
+            } else {
+                ings.push({ n: name, a: 1, u: amountUnit });
+            }
+        } else {
+            // Malformed line fallback to prevent breaking shopping lists
+            ings.push({ n: line, a: 1, u: 'serving' });
+        }
+    }
+    return ings;
 }
 
 // Start sequence
