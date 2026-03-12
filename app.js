@@ -59,6 +59,11 @@ const defaultData = [
 // Core categories for inside a plan
 const STANDARD_CATEGORIES = ["Breakfast", "Lunch", "Dinner 1", "Dinner 2"];
 
+// Supabase Configuration
+const supabaseUrl = "https://jmdmnrhcuwgaaxwdilzj.supabase.co";
+const supabaseKey = "sb_publishable_THkYfP-w3iB6jhITNczdnw_VtOBZ..."; // NOTE: Replace with full key from user
+const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
 // App State Management
 let plans = [];
 let currentPlanId = null;
@@ -134,11 +139,12 @@ const themeToggleBtn = document.getElementById('theme-toggle');
 let currentlyViewingDate = null;
 
 // Bootstrap Application
-function init() {
+async function init() {
     initTheme();
-    loadData();
-    renderMainScreen();
     setupEventListeners();
+    await loadData();
+    renderMainScreen();
+    setupRealtime();
 }
 
 // Theme Management
@@ -147,19 +153,99 @@ function initTheme() {
     document.documentElement.setAttribute('data-theme', savedTheme);
 }
 
-// Persist Data using LocalStorage
-function loadData() {
-    const stored = localStorage.getItem('platemate_plans');
-    if (stored) {
-        plans = JSON.parse(stored);
-    } else {
-        plans = [...defaultData];
-        saveData();
+// Sync Status UI
+function setSyncStatus(isSynced) {
+    const syncIcon = document.getElementById('sync-status-icon');
+    if (syncIcon) {
+        syncIcon.style.color = isSynced ? '#28a745' : '#dc3545';
+        syncIcon.style.filter = isSynced ? 'drop-shadow(0 0 4px rgba(40, 167, 69, 0.6))' : 'none';
     }
 }
 
-function saveData() {
+// Setup Realtime
+function setupRealtime() {
+    supabase.channel('schema-db-changes')
+        .on(
+            'postgres_changes',
+            {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'diet_plans',
+            },
+            (payload) => {
+                if (payload.new && payload.new.plans) {
+                    plans = payload.new.plans;
+                    
+                    // Re-render based on active screen
+                    if (document.getElementById('plan-screen').classList.contains('active')) {
+                        renderPlanDetails();
+                    } else if (document.getElementById('main-screen').classList.contains('active')) {
+                        renderMainScreen();
+                    }
+                }
+            }
+        )
+        .subscribe();
+}
+
+// Persist Data using Supabase
+async function loadData() {
+    try {
+        setSyncStatus(false);
+        const { data, error } = await supabase.from('diet_plans').select('*');
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+            // Load from cloud
+            plans = data[0].plans || [];
+            setSyncStatus(true);
+        } else {
+            // Table is empty, seed from local storage or defaults
+            const stored = localStorage.getItem('platemate_plans');
+            if (stored) {
+                plans = JSON.parse(stored);
+            } else {
+                plans = [...defaultData];
+            }
+            await saveData();
+        }
+    } catch (e) {
+        console.error("Supabase load error:", e);
+        // Fallback to local storage
+        const stored = localStorage.getItem('platemate_plans');
+        if (stored) {
+            plans = JSON.parse(stored);
+        } else {
+            plans = [...defaultData];
+        }
+    }
+}
+
+async function saveData() {
+    // Local backup
     localStorage.setItem('platemate_plans', JSON.stringify(plans));
+    try {
+        setSyncStatus(false);
+        const { data: existing } = await supabase.from('diet_plans').select('id');
+        let error;
+        
+        if (existing && existing.length > 0) {
+            const res = await supabase.from('diet_plans')
+                .update({ plans: plans })
+                .eq('id', existing[0].id);
+            error = res.error;
+        } else {
+            const res = await supabase.from('diet_plans')
+                .insert([{ plans: plans }]);
+            error = res.error;
+        }
+        
+        if (error) throw error;
+        setSyncStatus(true);
+    } catch (e) {
+        console.error("Supabase save error:", e);
+        setSyncStatus(false);
+    }
 }
 
 // Screen Navigation Utility
