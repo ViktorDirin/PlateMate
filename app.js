@@ -53,6 +53,30 @@ const defaultData = [
                 { id: "d2-2", text: "Pancakes (Savory with ham/cheese or Sweet with fruit)", ingredients: [{ n: "Pancakes", a: 150, u: "g" }, { n: "Ham/Fish", a: 80, u: "g" }, { n: "Cheese", a: 30, u: "g" }] }
             ]
         }
+    },
+    {
+        id: '11111111-1111-1111-1111-111111111111',
+        name: "Vik's Diet",
+        guidelines: "Snacks: Celery sticks, Pomelo (3-4 slices), Handful of almonds/walnuts, Green apple or pear, Carrot sticks.",
+        schedule: {},
+        categories: {
+            "Breakfast": [
+                { id: "vb1", text: "Egg Delight (2-3 eggs, 1/2 avocado, cucumber)", ingredients: [{ n: "Eggs", a: 3, u: "pcs" }, { n: "Avocado", a: 0.5, u: "pcs" }, { n: "Cucumber", a: 1, u: "pcs" }] },
+                { id: "vb2", text: "Cottage Cheese Mix (Cottage cheese, nuts, green apple)", ingredients: [{ n: "Cottage Cheese", a: 150, u: "g" }, { n: "Nuts", a: 20, u: "g" }, { n: "Green Apple", a: 1, u: "pcs" }] },
+                { id: "vb3", text: "Classic Oatmeal (Oats, 1/2 avocado or seeds)", ingredients: [{ n: "Oats", a: 50, u: "g" }, { n: "Avocado/Seeds", a: 0.5, u: "pcs" }] }
+            ],
+            "Lunch": [
+                { id: "vl1", text: "Tuna & Rice (Tuna, brown rice, salad)", ingredients: [{ n: "Tuna", a: 130, u: "g" }, { n: "Brown Rice", a: 150, u: "g" }, { n: "Salad", a: 150, u: "g" }] },
+                { id: "vl2", text: "Chicken & Buckwheat (Chicken fillet, buckwheat, red cabbage salad)", ingredients: [{ n: "Chicken Fillet", a: 150, u: "g" }, { n: "Buckwheat", a: 150, u: "g" }, { n: "Red Cabbage Salad", a: 150, u: "g" }] },
+                { id: "vl3", text: "Veggie Stew (Eggplant, pepper, carrot, onion, 1 potato + fish/chicken)", ingredients: [{ n: "Veggie Stew", a: 200, u: "g" }, { n: "Fish/Chicken", a: 150, u: "g" }] },
+                { id: "vl4", text: "Vietnamese Mix (Tofu, Pho noodles or brown rice)", ingredients: [{ n: "Tofu", a: 150, u: "g" }, { n: "Pho/Brown Rice", a: 150, u: "g" }] }
+            ],
+            "Dinner": [
+                { id: "vd1", text: "Seafood Platter (Shrimp or squid, celery, cucumber)", ingredients: [{ n: "Shrimp/Squid", a: 150, u: "g" }, { n: "Celery", a: 50, u: "g" }, { n: "Cucumber", a: 100, u: "g" }] },
+                { id: "vd2", text: "Protein Salad (Lettuce, tomato, 2 slices of cheese, tuna)", ingredients: [{ n: "Lettuce", a: 100, u: "g" }, { n: "Tomato", a: 100, u: "g" }, { n: "Cheese", a: 2, u: "slices" }, { n: "Tuna", a: 100, u: "g" }] },
+                { id: "vd3", text: "Light Stew (Veggie stew without potato + tofu or tuna)", ingredients: [{ n: "Light Veggie Stew", a: 200, u: "g" }, { n: "Tofu/Tuna", a: 100, u: "g" }] }
+            ]
+        }
     }
 ];
 
@@ -206,19 +230,21 @@ function setupRealtime() {
                 if (!incomingData) return;
 
                 const incomingPlan = {
-                    id: '00000000-0000-0000-0000-000000000000',
+                    id: incomingData.id || '00000000-0000-0000-0000-000000000000',
                     name: incomingData.name,
                     guidelines: incomingData.guidelines || "",
                     categories: incomingData.categories || {},
                     schedule: incomingData.schedule || {}
                 };
 
-                // Check preventing flickering if local memory is identical
-                if (plans && plans.length > 0 && JSON.stringify(plans[0]) === JSON.stringify(incomingPlan)) {
-                    return;
+                const index = plans.findIndex(p => p.id === incomingPlan.id);
+                if (index !== -1) {
+                    if (JSON.stringify(plans[index]) === JSON.stringify(incomingPlan)) return;
+                    plans[index] = incomingPlan;
+                } else {
+                    plans.push(incomingPlan);
                 }
 
-                plans = [incomingPlan];
                 localStorage.setItem('platemate_plans', JSON.stringify(plans));
 
                 // Re-render based on active screen
@@ -254,29 +280,34 @@ async function loadData() {
         if (error) throw error;
 
         if (data && data.length > 0) {
-            // Load from cloud - target only the single record to enforce singleton
-            const row = data[0];
-            plans = [{
-                id: '00000000-0000-0000-0000-000000000000',
+            plans = data.map(row => ({
+                id: row.id || '00000000-0000-0000-0000-000000000000',
                 name: row.name,
                 guidelines: row.guidelines || "",
                 categories: row.categories || {},
                 schedule: row.schedule || {}
-            }];
-            localStorage.setItem('platemate_plans', JSON.stringify(plans)); // Immediate sync to avoid ghost data
-            setSyncStatus(true);
+            }));
         } else {
             // Table is empty, seed from local storage or defaults
             const stored = localStorage.getItem('platemate_plans');
             if (stored) {
                 plans = JSON.parse(stored);
-                // Force singleton ID
-                if(plans.length > 0) plans[0].id = '00000000-0000-0000-0000-000000000000';
             } else {
-                plans = [...defaultData];
+                plans = JSON.parse(JSON.stringify(defaultData));
             }
-            await saveData();
         }
+        
+        // Ensure Vik's Diet is added if missing
+        if (!plans.some(p => p.id === '11111111-1111-1111-1111-111111111111' || p.name === "Vik's Diet")) {
+            const viksDiet = defaultData.find(d => d.id === '11111111-1111-1111-1111-111111111111');
+            if (viksDiet) {
+                plans.push(JSON.parse(JSON.stringify(viksDiet)));
+            }
+        }
+
+        localStorage.setItem('platemate_plans', JSON.stringify(plans));
+        await saveData();
+        setSyncStatus(true);
     } catch (e) {
         console.error("Supabase load error:", e);
         // Fallback to local storage
@@ -294,21 +325,20 @@ async function saveData() {
     // Local backup
     localStorage.setItem('platemate_plans', JSON.stringify(plans));
     
-    // Enforce Singleton for cloud DB
+    // Support multiple plans
     if (!plans || plans.length === 0) return;
-    const p = plans[0]; // target only ONE row
 
     try {
         setSyncStatus(false);
-        const payload = {
-            id: '00000000-0000-0000-0000-000000000000',
+        const payloads = plans.map(p => ({
+            id: p.id || '00000000-0000-0000-0000-000000000000',
             name: p.name,
             guidelines: p.guidelines || "",
             categories: p.categories || {},
             schedule: p.schedule || {}
-        };
+        }));
 
-        const { error } = await supabaseClient.from('diet_plans').upsert([payload]);
+        const { error } = await supabaseClient.from('diet_plans').upsert(payloads);
 
         if (!error) {
             setSyncStatus(true);
@@ -384,7 +414,12 @@ function openPlan(id) {
 
     if (!plan.schedule) plan.schedule = {}; // backward compatibility
 
-    planTitleEl.textContent = plan.name;
+    const titleTextSpan = document.getElementById('plan-title-text');
+    if (titleTextSpan) {
+        titleTextSpan.textContent = plan.name;
+    } else {
+        planTitleEl.textContent = plan.name;
+    }
 
     // reset date input
     if (planDateInput) {
@@ -480,11 +515,15 @@ function renderPlanDetails() {
         if (openDatePickerBtn) openDatePickerBtn.style.display = 'none';
         if (planDateInput) planDateInput.disabled = true;
         if (planDateBtn) planDateBtn.disabled = true;
+        const scrollToTopBtn = document.getElementById('scroll-to-top-btn');
+        if (scrollToTopBtn) scrollToTopBtn.style.display = 'block';
     } else if (activePlanningControls) {
         activePlanningControls.style.display = 'none';
         if (openDatePickerBtn) openDatePickerBtn.style.display = 'block';
         if (planDateInput) planDateInput.disabled = false;
         if (planDateBtn) planDateBtn.disabled = false;
+        const scrollToTopBtn = document.getElementById('scroll-to-top-btn');
+        if (scrollToTopBtn) scrollToTopBtn.style.display = 'none';
     }
 
     categoriesContainer.innerHTML = '';
@@ -638,6 +677,34 @@ function setupEventListeners() {
         currentPlanId = null;
         navigateTo('main-screen');
     });
+
+    // Scroll to Top Button
+    const scrollToTopBtn = document.getElementById('scroll-to-top-btn');
+    if (scrollToTopBtn) {
+        scrollToTopBtn.addEventListener('click', () => {
+            const plannerSection = document.querySelector('.planner-section');
+            if (plannerSection) {
+                plannerSection.scrollIntoView({ behavior: 'smooth' });
+            }
+        });
+    }
+
+    // Edit Plan Title Name
+    const editPlanTitleBtn = document.getElementById('edit-plan-title-btn');
+    if (editPlanTitleBtn) {
+        editPlanTitleBtn.addEventListener('click', () => {
+            const plan = plans.find(p => p.id === currentPlanId);
+            if (plan) {
+                const newName = prompt("Enter new plan name:", plan.name);
+                if (newName && newName.trim()) {
+                    plan.name = newName.trim();
+                    saveData();
+                    const titleTextSpan = document.getElementById('plan-title-text');
+                    if (titleTextSpan) titleTextSpan.textContent = plan.name;
+                }
+            }
+        });
+    }
 
     // Theme Toggle Logic
     if (themeToggleBtn) {
