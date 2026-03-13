@@ -474,17 +474,56 @@ function renderPlanDetails() {
 
                 let menuHtml = '';
                 Object.keys(plan.categories).forEach(cat => {
-                    const selId = plan.schedule[date][cat];
+                    const sel = plan.schedule[date][cat];
+                    const selId = typeof sel === 'object' ? sel.id : sel;
+                    const isDone = typeof sel === 'object' && sel.done ? true : false;
+                    
                     if (selId && plan.categories[cat]) {
                         const variant = plan.categories[cat].find(v => v.id === selId);
                         if (variant) {
-                            menuHtml += `<div style="margin-bottom: 12px;"><strong>${cat}:</strong><br/> ${variant.text}</div>`;
+                            const doneStyle = isDone ? 'text-decoration: line-through; opacity: 0.6;' : '';
+                            const checkedAttr = isDone ? 'checked' : '';
+                            menuHtml += `
+                                <div style="margin-bottom: 12px; display: flex; align-items: flex-start; gap: 12px; ${doneStyle}">
+                                    <input type="checkbox" class="meal-completed-checkbox" data-cat="${cat}" style="transform: scale(1.3); margin-top: 4px; flex: 0 0 20px;" ${checkedAttr}>
+                                    <div>
+                                        <strong>${cat}:</strong><br/> ${variant.text}
+                                    </div>
+                                </div>`;
                         }
                     }
                 });
                 if (!menuHtml) menuHtml = '<p>No meals planned for this date.</p>';
 
                 dailyMenuContent.innerHTML = menuHtml;
+                
+                // Add event listeners for toggling meal completion
+                dailyMenuContent.querySelectorAll('.meal-completed-checkbox').forEach(cb => {
+                    cb.addEventListener('change', (e) => {
+                        const cat = e.target.getAttribute('data-cat');
+                        const isChecked = e.target.checked;
+                        
+                        const sel = plan.schedule[currentlyViewingDate][cat];
+                        const selId = typeof sel === 'object' ? sel.id : sel;
+                        
+                        plan.schedule[currentlyViewingDate][cat] = {
+                            id: selId,
+                            done: isChecked
+                        };
+                        saveData();
+                        
+                        // Update visual presentation directly (strikethrough)
+                        const container = e.target.parentElement;
+                        if (isChecked) {
+                            container.style.textDecoration = 'line-through';
+                            container.style.opacity = '0.6';
+                        } else {
+                            container.style.textDecoration = 'none';
+                            container.style.opacity = '1';
+                        }
+                    });
+                });
+
                 dailyMenuModal.classList.add('active');
             });
 
@@ -873,7 +912,14 @@ function setupEventListeners() {
             activePlanningDate = dateStr;
             const plan = plans.find(p => p.id === currentPlanId);
             if (!plan.schedule) plan.schedule = {};
-            tempSelections = plan.schedule[dateStr] ? { ...plan.schedule[dateStr] } : {};
+            
+            tempSelections = {};
+            const savedDay = plan.schedule[dateStr] || {};
+            Object.keys(savedDay).forEach(cat => {
+                const sel = savedDay[cat];
+                tempSelections[cat] = typeof sel === 'object' ? sel.id : sel;
+            });
+            
             datePickerModal.classList.remove('active');
             renderPlanDetails();
         });
@@ -931,7 +977,9 @@ function setupEventListeners() {
                     }
                     if (plan.schedule) {
                         for (let date in plan.schedule) {
-                            if (plan.schedule[date][catType] === variantId) {
+                            const sel = plan.schedule[date][catType];
+                            const selId = typeof sel === 'object' ? sel.id : sel;
+                            if (selId === variantId) {
                                 delete plan.schedule[date][catType];
                             }
                         }
@@ -958,7 +1006,21 @@ function setupEventListeners() {
                 const plan = plans.find(p => p.id === currentPlanId);
                 if (plan) {
                     if (!plan.schedule) plan.schedule = {};
-                    plan.schedule[activePlanningDate] = { ...tempSelections };
+                    
+                    const newSchedule = {};
+                    Object.keys(tempSelections).forEach(cat => {
+                        if (!tempSelections[cat]) return;
+                        const existingSel = plan.schedule[activePlanningDate] ? plan.schedule[activePlanningDate][cat] : null;
+                        const existingId = (existingSel && typeof existingSel === 'object') ? existingSel.id : existingSel;
+                        const existingDone = (existingSel && typeof existingSel === 'object') ? existingSel.done : false;
+                        
+                        newSchedule[cat] = {
+                            id: tempSelections[cat],
+                            done: (existingId === tempSelections[cat]) ? existingDone : false
+                        };
+                    });
+                    
+                    plan.schedule[activePlanningDate] = newSchedule;
                     saveData();
                     // Reset selection state after saving
                     activePlanningDate = null;
@@ -987,7 +1049,8 @@ function setupEventListeners() {
             const shoppingMap = {};
 
             Object.keys(plan.categories).forEach(cat => {
-                const selId = selections[cat];
+                const sel = selections[cat];
+                const selId = typeof sel === 'object' ? sel.id : sel;
                 if (selId && plan.categories[cat]) {
                     const variant = plan.categories[cat].find(v => v.id === selId);
                     if (variant && variant.ingredients) {
