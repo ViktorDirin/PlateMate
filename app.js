@@ -57,7 +57,7 @@ const defaultData = [
     {
         id: '11111111-1111-1111-1111-111111111111',
         name: "Vik's Diet",
-        guidelines: "Snacks: Celery sticks, Pomelo (3-4 slices), Handful of almonds/walnuts, Green apple or pear, Carrot sticks.",
+        guidelines: "Snacks: Fresh Celery sticks (for snacking), Pomelo (3-4 slices), Handful of almonds/walnuts, Green apple or pear, Carrot sticks.",
         schedule: {},
         categories: {
             "Breakfast": [
@@ -138,6 +138,8 @@ const saveCategoryBtn = document.getElementById('save-category-btn');
 
 // Buttons / Layout elements
 const backBtn = document.getElementById('back-btn');
+const historyBackBtn = document.getElementById('history-back-btn');
+const viewHistoryBtn = document.getElementById('view-history-btn');
 const addPlanBtn = document.getElementById('add-plan-btn');
 const addPlanModal = document.getElementById('add-plan-modal');
 const newPlanNameInput = document.getElementById('new-plan-name');
@@ -298,10 +300,16 @@ async function loadData() {
         }
         
         // Ensure Vik's Diet is added if missing
-        if (!plans.some(p => p.id === '11111111-1111-1111-1111-111111111111' || p.name === "Vik's Diet")) {
+        const viksPlanIdx = plans.findIndex(p => p.id === '11111111-1111-1111-1111-111111111111' || p.name === "Vik's Diet");
+        if (viksPlanIdx === -1) {
             const viksDiet = defaultData.find(d => d.id === '11111111-1111-1111-1111-111111111111');
             if (viksDiet) {
                 plans.push(JSON.parse(JSON.stringify(viksDiet)));
+            }
+        } else {
+            // Force update guidelines to include new snack if missing
+            if (!plans[viksPlanIdx].guidelines.includes("Fresh Celery sticks")) {
+                plans[viksPlanIdx].guidelines = "Snacks: Fresh Celery sticks (for snacking), Pomelo (3-4 slices), Handful of almonds/walnuts, Green apple or pear, Carrot sticks.";
             }
         }
 
@@ -483,12 +491,36 @@ function renderPlanDetails() {
                         if (variant) {
                             const doneStyle = isDone ? 'text-decoration: line-through; opacity: 0.6;' : '';
                             const checkedAttr = isDone ? 'checked' : '';
+                            const photoUrl = typeof sel === 'object' && sel.photoUrl ? sel.photoUrl : null;
+                            
+                            let photoHtml = '';
+                            if (photoUrl) {
+                                photoHtml = `
+                                    <div style="margin-top: 8px; position: relative; display: inline-block;">
+                                        <img src="${photoUrl}" style="max-width: 100px; max-height: 100px; border-radius: 8px; border: 1px solid var(--gray-light);" />
+                                        <button class="icon-btn delete-photo-btn" data-cat="${cat}" style="position: absolute; top: -8px; right: -8px; background: #dc3545; color: white; border-radius: 50%; padding: 4px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                `;
+                            }
+
                             menuHtml += `
                                 <div style="margin-bottom: 12px; display: flex; align-items: flex-start; gap: 12px; ${doneStyle}">
                                     <input type="checkbox" class="meal-completed-checkbox" data-cat="${cat}" style="transform: scale(1.3); margin-top: 4px; flex: 0 0 20px;" ${checkedAttr}>
-                                    <div>
+                                    <div style="flex-grow: 1;">
                                         <strong>${cat}:</strong><br/> ${variant.text}
+                                        ${photoHtml}
                                     </div>
+                                    <button class="icon-btn photo-btn" data-cat="${cat}" style="color: var(--primary-blue); padding: 4px; margin-top: -2px;">
+                                        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                            <circle cx="12" cy="13" r="4"></circle>
+                                        </svg>
+                                    </button>
                                 </div>`;
                         }
                     }
@@ -505,10 +537,12 @@ function renderPlanDetails() {
                         
                         const sel = plan.schedule[currentlyViewingDate][cat];
                         const selId = typeof sel === 'object' ? sel.id : sel;
+                        const photoUrl = typeof sel === 'object' && sel.photoUrl ? sel.photoUrl : null;
                         
                         plan.schedule[currentlyViewingDate][cat] = {
                             id: selId,
-                            done: isChecked
+                            done: isChecked,
+                            photoUrl: photoUrl
                         };
                         saveData();
                         
@@ -520,6 +554,134 @@ function renderPlanDetails() {
                         } else {
                             container.style.textDecoration = 'none';
                             container.style.opacity = '1';
+                        }
+                    });
+                });
+
+                // Add event listeners for photo upload
+                dailyMenuContent.querySelectorAll('.photo-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const cat = e.currentTarget.getAttribute('data-cat');
+                        const fileInput = document.getElementById('meal-photo-input');
+                        if (!fileInput) return;
+                        
+                        // Safely capture the current target synchronously
+                        const activeBtnIcon = e.currentTarget;
+                        const origHTML = activeBtnIcon ? activeBtnIcon.innerHTML : '';
+                        
+                        // Reset input first
+                        fileInput.value = '';
+                        fileInput.onchange = async (event) => {
+                            const file = event.target.files[0];
+                            if (!file) return;
+                            
+                            if (activeBtnIcon) {
+                                activeBtnIcon.innerHTML = `<span style="font-size:12px;">...</span>`;
+                            } else {
+                                console.log("Uploading photo for", cat);
+                            }
+                            
+                            try {
+                                const path = `uploads/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.\-_]/g, '')}`;
+                                const { data, error } = await supabaseClient.storage.from('meal-photos').upload(path, file);
+                                if (error) throw error;
+                                
+                                const { data: urlData } = supabaseClient.storage.from('meal-photos').getPublicUrl(path);
+                                const photoUrl = urlData.publicUrl;
+                                
+                                const sel = plan.schedule[currentlyViewingDate][cat];
+                                const selId = typeof sel === 'object' ? sel.id : sel;
+                                const isDone = typeof sel === 'object' ? sel.done : false;
+                                
+                                plan.schedule[currentlyViewingDate][cat] = {
+                                    id: selId,
+                                    done: isDone,
+                                    photoUrl: photoUrl
+                                };
+                                await saveData();
+                                
+                                // Direct DOM update after save
+                                if (activeBtnIcon) {
+                                    const textDiv = activeBtnIcon.previousElementSibling;
+                                    if (textDiv && !textDiv.querySelector('img')) {
+                                        const photoHtml = `
+                                            <div style="margin-top: 8px; position: relative; display: inline-block;">
+                                                <img src="${photoUrl}" style="max-width: 100px; max-height: 100px; border-radius: 8px; border: 1px solid var(--gray-light);" />
+                                                <button class="icon-btn delete-photo-btn" data-cat="${cat}" style="position: absolute; top: -8px; right: -8px; background: #dc3545; color: white; border-radius: 50%; padding: 4px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                                                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        `;
+                                        textDiv.innerHTML += photoHtml;
+                                        
+                                        const newDelBtn = textDiv.querySelector('.delete-photo-btn');
+                                        if (newDelBtn) {
+                                            newDelBtn.addEventListener('click', async (eDel) => {
+                                                eDel.stopPropagation();
+                                                const confirmed = await showConfirm("Remove this photo?");
+                                                if (!confirmed) return;
+                                                
+                                                const selObj = plan.schedule[currentlyViewingDate][cat];
+                                                if (selObj && typeof selObj === 'object' && selObj.photoUrl) {
+                                                    const urlParts = selObj.photoUrl.split('/meal-photos/');
+                                                    if (urlParts.length > 1) {
+                                                        const delPath = urlParts[1];
+                                                        supabaseClient.storage.from('meal-photos').remove([delPath]).catch(console.error);
+                                                    }
+                                                    delete selObj.photoUrl;
+                                                    await saveData();
+                                                    newDelBtn.parentElement.remove();
+                                                    
+                                                    // Sync history screen visually if it is active
+                                                    if (document.getElementById('history-screen').classList.contains('active')) {
+                                                        renderHistoryScreen();
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    }
+                                }
+                                
+                                if (activeBtnIcon) activeBtnIcon.innerHTML = origHTML;
+                                else console.log("Upload complete.");
+                                
+                                // Sync history screen visually if it is active
+                                if (document.getElementById('history-screen').classList.contains('active')) {
+                                    renderHistoryScreen();
+                                }
+                                
+                            } catch (err) {
+                                console.error('Upload Error:', err);
+                                alert("Upload failed.");
+                                if (activeBtnIcon) activeBtnIcon.innerHTML = origHTML;
+                            }
+                        };
+                        fileInput.click();
+                    });
+                });
+
+                // Add event listeners for photo deletion
+                dailyMenuContent.querySelectorAll('.delete-photo-btn').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        const confirmed = await showConfirm("Remove this photo?");
+                        if (!confirmed) return;
+                        
+                        const cat = e.currentTarget.getAttribute('data-cat');
+                        const sel = plan.schedule[currentlyViewingDate][cat];
+                        
+                        if (sel && typeof sel === 'object' && sel.photoUrl) {
+                            const urlParts = sel.photoUrl.split('/meal-photos/');
+                            if (urlParts.length > 1) {
+                                const path = urlParts[1];
+                                supabaseClient.storage.from('meal-photos').remove([path]).catch(console.error);
+                            }
+                            delete sel.photoUrl;
+                            await saveData();
+                            e.currentTarget.parentElement.remove(); // Direct DOM update
                         }
                     });
                 });
@@ -716,6 +878,19 @@ function setupEventListeners() {
         currentPlanId = null;
         navigateTo('main-screen');
     });
+
+    if (historyBackBtn) {
+        historyBackBtn.addEventListener('click', () => {
+            navigateTo('plan-screen');
+        });
+    }
+
+    if (viewHistoryBtn) {
+        viewHistoryBtn.addEventListener('click', () => {
+            renderHistoryScreen();
+            navigateTo('history-screen');
+        });
+    }
 
     // Scroll to Top Button
     const scrollToTopBtn = document.getElementById('scroll-to-top-btn');
@@ -1013,10 +1188,12 @@ function setupEventListeners() {
                         const existingSel = plan.schedule[activePlanningDate] ? plan.schedule[activePlanningDate][cat] : null;
                         const existingId = (existingSel && typeof existingSel === 'object') ? existingSel.id : existingSel;
                         const existingDone = (existingSel && typeof existingSel === 'object') ? existingSel.done : false;
+                        const existingPhotoUrl = (existingSel && typeof existingSel === 'object') ? existingSel.photoUrl : null;
                         
                         newSchedule[cat] = {
                             id: tempSelections[cat],
-                            done: (existingId === tempSelections[cat]) ? existingDone : false
+                            done: (existingId === tempSelections[cat]) ? existingDone : false,
+                            photoUrl: (existingId === tempSelections[cat]) ? existingPhotoUrl : null
                         };
                     });
                     
@@ -1096,6 +1273,93 @@ function setupEventListeners() {
             });
         });
     }
+}
+
+// History Screen logic
+function renderHistoryScreen() {
+    const historyList = document.getElementById('history-list');
+    if (!historyList) return;
+    historyList.innerHTML = '';
+
+    const plan = plans.find(p => p.id === currentPlanId);
+    if (!plan || !plan.schedule) {
+        historyList.innerHTML = '<p>No history available.</p>';
+        return;
+    }
+
+    const sortedDates = Object.keys(plan.schedule).sort((a, b) => new Date(b) - new Date(a));
+    
+    if (sortedDates.length === 0) {
+        historyList.innerHTML = '<p>No history available.</p>';
+        return;
+    }
+
+    sortedDates.forEach(date => {
+        let dateString = date;
+        try {
+            const [y, m, d] = date.split('-');
+            const dateObj = new Date(y, m - 1, d);
+            dateString = dateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        } catch (e) { }
+
+        const dateBlock = document.createElement('div');
+        dateBlock.className = 'card';
+        dateBlock.style.marginBottom = '16px';
+        
+        // Add click listener to expand/collapse or navigate
+        dateBlock.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--gray-light); padding-bottom: 8px; margin-bottom: 12px;">
+                <h3 style="margin: 0;">${dateString}</h3>
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="expand-icon">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <div class="history-details" style="display: none;"></div>
+        `;
+
+        const detailsContainer = dateBlock.querySelector('.history-details');
+        const expandIcon = dateBlock.querySelector('.expand-icon');
+        
+        let reportHtml = '';
+        Object.keys(plan.categories).forEach(cat => {
+            const sel = plan.schedule[date][cat];
+            const selId = typeof sel === 'object' ? sel.id : sel;
+            const isDone = typeof sel === 'object' && sel.done ? true : false;
+            const photoUrl = typeof sel === 'object' && sel.photoUrl ? sel.photoUrl : null;
+            
+            if (selId && plan.categories[cat]) {
+                const variant = plan.categories[cat].find(v => v.id === selId);
+                if (variant) {
+                    const doneText = isDone ? '✅ <span style="color: #28a745;">Done</span>' : '❌ <span style="color: #dc3545;">Missed</span>';
+                    let imgHtml = photoUrl ? `<img src="${photoUrl}" style="width: 100%; border-radius: 12px; margin-top: 8px; border: 1px solid var(--gray-light);" />` : '';
+                    
+                    reportHtml += `
+                        <div style="margin-bottom: 16px;">
+                            <strong>${cat}:</strong> ${variant.text}<br/>
+                            <div style="font-size: 0.9em; font-weight: 600; margin-top: 4px;">${doneText}</div>
+                            ${imgHtml}
+                        </div>
+                    `;
+                }
+            }
+        });
+        
+        if (!reportHtml) reportHtml = '<p>No meals planned for this date.</p>';
+        detailsContainer.innerHTML = reportHtml;
+
+        dateBlock.style.cursor = 'pointer';
+        dateBlock.addEventListener('click', () => {
+            if (detailsContainer.style.display === 'none') {
+                detailsContainer.style.display = 'block';
+                expandIcon.innerHTML = '<polyline points="18 15 12 9 6 15"></polyline>';
+            } else {
+                detailsContainer.style.display = 'none';
+                expandIcon.innerHTML = '<polyline points="6 9 12 15 18 9"></polyline>';
+            }
+        });
+
+        historyList.appendChild(dateBlock);
+    });
 }
 
 // Ingredient Parser logic for Edit Modal
