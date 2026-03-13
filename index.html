@@ -247,6 +247,18 @@
         </div>
     </div>
 
+    <!-- Confirm Modal -->
+    <div id="confirm-modal" class="modal">
+        <div class="modal-content card" style="background-color: #1a1a1a; border: 2px solid #00f3ff; box-shadow: 0 0 15px rgba(0, 243, 255, 0.5);">
+            <h2 style="color: #00f3ff; margin-top: 0;">Confirm Action</h2>
+            <p id="confirm-modal-message" style="margin-bottom: 24px; color: #fff;">Are you sure you want to do this?</p>
+            <div class="modal-actions" style="display: flex; gap: 12px; justify-content: flex-end;">
+                <button id="confirm-cancel-btn" class="btn btn-secondary" style="color: #fff; border-color: #555;">Cancel</button>
+                <button id="confirm-delete-btn" class="btn" style="background-color: #dc3545; color: white;">Delete</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="app.js"></script>
 </body>

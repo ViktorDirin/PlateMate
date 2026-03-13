@@ -31,8 +31,8 @@
 // Initial Seed Data
 const defaultData = [
     {
-        // Fallback for older browsers without crypto
-        id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(),
+        // Fixed UUID to maintain a singleton DB row
+        id: '00000000-0000-0000-0000-000000000000',
         name: "Weight Loss Plan",
         schedule: {},
         categories: {
@@ -61,8 +61,15 @@ const STANDARD_CATEGORIES = ["Breakfast", "Lunch", "Dinner 1", "Dinner 2"];
 
 // Supabase Configuration
 const supabaseUrl = "https://jmdmnrhcuwgaaxwdilzj.supabase.co";
-const supabaseKey = "sb_publishable_THkYfP-w3iB6jhITNczdnw_VtOBZ..."; // NOTE: Replace with full key from user
-const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImptZG1ucmhjdXdnYWF4d2RpbHpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMjMxNzksImV4cCI6MjA4ODg5OTE3OX0.ues1CEctWxhl_rJeuyjUapcJvyjWL_BFGcKdngXp5mM";
+const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+console.log("Client Initialized. Attempting test query...");
+supabaseClient.from('diet_plans').select('*').limit(1)
+    .then(res => {
+        if (res.error) console.error("Cloud Auth Failed:", res.error.message);
+        else console.log("Cloud Auth Success! Connection is active.");
+    });
 
 // App State Management
 let plans = [];
@@ -140,11 +147,33 @@ let currentlyViewingDate = null;
 
 // Bootstrap Application
 async function init() {
+    // Unregister any active service workers to prevent collisions
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+            for (let registration of registrations) {
+                registration.unregister();
+            }
+        });
+    }
+
     initTheme();
     setupEventListeners();
     await loadData();
+    await saveData(); // Manual push to align DB
     renderMainScreen();
     setupRealtime();
+
+    // Check Connection
+    supabaseClient.from('diet_plans').select('count', { count: 'exact', head: true })
+        .then(res => {
+            if (res.error) {
+                console.error("Connection Failed:", res.error.message);
+                setSyncStatus(false);
+            } else {
+                console.log("Supabase Connected Successfully!");
+                setSyncStatus(true);
+            }
+        });
 }
 
 // Theme Management
@@ -164,46 +193,85 @@ function setSyncStatus(isSynced) {
 
 // Setup Realtime
 function setupRealtime() {
-    supabase.channel('schema-db-changes')
-        .on(
+    const channel = supabaseClient.channel('schema-db-changes');
+    channel.on(
             'postgres_changes',
             {
-                event: 'UPDATE',
+                event: '*',
                 schema: 'public',
                 table: 'diet_plans',
             },
             (payload) => {
-                if (payload.new && payload.new.plans) {
-                    plans = payload.new.plans;
-                    
-                    // Re-render based on active screen
-                    if (document.getElementById('plan-screen').classList.contains('active')) {
-                        renderPlanDetails();
-                    } else if (document.getElementById('main-screen').classList.contains('active')) {
-                        renderMainScreen();
-                    }
+                const incomingData = payload.new;
+                if (!incomingData) return;
+
+                const incomingPlan = {
+                    id: '00000000-0000-0000-0000-000000000000',
+                    name: incomingData.name,
+                    guidelines: incomingData.guidelines || "",
+                    categories: incomingData.categories || {},
+                    schedule: incomingData.schedule || {}
+                };
+
+                // Check preventing flickering if local memory is identical
+                if (plans && plans.length > 0 && JSON.stringify(plans[0]) === JSON.stringify(incomingPlan)) {
+                    return;
+                }
+
+                plans = [incomingPlan];
+                localStorage.setItem('platemate_plans', JSON.stringify(plans));
+
+                // Re-render based on active screen
+                if (document.getElementById('plan-screen').classList.contains('active')) {
+                    renderPlanDetails();
+                } else if (document.getElementById('main-screen').classList.contains('active')) {
+                    renderMainScreen();
                 }
             }
         )
-        .subscribe();
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                setSyncStatus(true);
+            } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                setSyncStatus(false);
+                supabaseClient.removeChannel(channel);
+            }
+        });
 }
 
 // Persist Data using Supabase
 async function loadData() {
     try {
         setSyncStatus(false);
-        const { data, error } = await supabase.from('diet_plans').select('*');
-        if (error) throw error;
         
+        // One-time cleanup of duplicates in the cloud DB
+        if (!localStorage.getItem('platemate_db_cleaned_v2')) {
+            await supabaseClient.from('diet_plans').delete().neq('id', 'dummy_non_existent');
+            localStorage.setItem('platemate_db_cleaned_v2', 'true');
+        }
+
+        const { data, error } = await supabaseClient.from('diet_plans').select('*');
+        if (error) throw error;
+
         if (data && data.length > 0) {
-            // Load from cloud
-            plans = data[0].plans || [];
+            // Load from cloud - target only the single record to enforce singleton
+            const row = data[0];
+            plans = [{
+                id: '00000000-0000-0000-0000-000000000000',
+                name: row.name,
+                guidelines: row.guidelines || "",
+                categories: row.categories || {},
+                schedule: row.schedule || {}
+            }];
+            localStorage.setItem('platemate_plans', JSON.stringify(plans)); // Immediate sync to avoid ghost data
             setSyncStatus(true);
         } else {
             // Table is empty, seed from local storage or defaults
             const stored = localStorage.getItem('platemate_plans');
             if (stored) {
                 plans = JSON.parse(stored);
+                // Force singleton ID
+                if(plans.length > 0) plans[0].id = '00000000-0000-0000-0000-000000000000';
             } else {
                 plans = [...defaultData];
             }
@@ -215,6 +283,7 @@ async function loadData() {
         const stored = localStorage.getItem('platemate_plans');
         if (stored) {
             plans = JSON.parse(stored);
+            if(plans.length > 0) plans[0].id = '00000000-0000-0000-0000-000000000000';
         } else {
             plans = [...defaultData];
         }
@@ -224,28 +293,59 @@ async function loadData() {
 async function saveData() {
     // Local backup
     localStorage.setItem('platemate_plans', JSON.stringify(plans));
+    
+    // Enforce Singleton for cloud DB
+    if (!plans || plans.length === 0) return;
+    const p = plans[0]; // target only ONE row
+
     try {
         setSyncStatus(false);
-        const { data: existing } = await supabase.from('diet_plans').select('id');
-        let error;
-        
-        if (existing && existing.length > 0) {
-            const res = await supabase.from('diet_plans')
-                .update({ plans: plans })
-                .eq('id', existing[0].id);
-            error = res.error;
+        const payload = {
+            id: '00000000-0000-0000-0000-000000000000',
+            name: p.name,
+            guidelines: p.guidelines || "",
+            categories: p.categories || {},
+            schedule: p.schedule || {}
+        };
+
+        const { error } = await supabaseClient.from('diet_plans').upsert([payload]);
+
+        if (!error) {
+            setSyncStatus(true);
         } else {
-            const res = await supabase.from('diet_plans')
-                .insert([{ plans: plans }]);
-            error = res.error;
+            throw error;
         }
-        
-        if (error) throw error;
-        setSyncStatus(true);
     } catch (e) {
         console.error("Supabase save error:", e);
         setSyncStatus(false);
     }
+}
+
+// Custom UI Confirm Modal Function
+function showConfirm(message) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('confirm-modal');
+        const msgEl = document.getElementById('confirm-modal-message');
+        const cancelBtn = document.getElementById('confirm-cancel-btn');
+        const deleteBtn = document.getElementById('confirm-delete-btn');
+        
+        if (!modal) return resolve(window.confirm(message));
+
+        msgEl.textContent = message;
+        modal.classList.add('active');
+
+        const cleanup = () => {
+            cancelBtn.removeEventListener('click', onCancel);
+            deleteBtn.removeEventListener('click', onDelete);
+            modal.classList.remove('active');
+        };
+
+        const onCancel = () => { cleanup(); resolve(false); };
+        const onDelete = () => { cleanup(); resolve(true); };
+
+        cancelBtn.addEventListener('click', onCancel);
+        deleteBtn.addEventListener('click', onDelete);
+    });
 }
 
 // Screen Navigation Utility
@@ -390,7 +490,16 @@ function renderPlanDetails() {
     categoriesContainer.innerHTML = '';
 
     // Render Categories
-    Object.keys(plan.categories).forEach(cat => {
+    const orderedCategories = Object.keys(plan.categories).sort((a, b) => {
+        const indexA = STANDARD_CATEGORIES.indexOf(a);
+        const indexB = STANDARD_CATEGORIES.indexOf(b);
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+        return a.localeCompare(b);
+    });
+
+    orderedCategories.forEach(cat => {
         const catCard = document.createElement('div');
         catCard.className = 'category-card';
         catCard.setAttribute('data-type', cat);
@@ -442,11 +551,12 @@ function renderPlanDetails() {
 // Attach standard DOM Event Listeners
 function setupEventListeners() {
     // Top-Level Event Delegation for Categories Container (Add food, delete category, edit/select variant)
-    categoriesContainer.addEventListener('click', (e) => {
+    categoriesContainer.addEventListener('click', async (e) => {
         // Delete Category check
         const delCatBtn = e.target.closest('.delete-category-btn');
         if (delCatBtn) {
-            if (confirm("Delete this entire category and all its meals?")) {
+            const confirmed = await showConfirm("Delete this entire category and all its meals?");
+            if (confirmed) {
                 const catType = delCatBtn.getAttribute('data-category-type');
                 const plan = plans.find(p => p.id === currentPlanId);
                 if (plan && plan.categories[catType]) {
@@ -739,8 +849,9 @@ function setupEventListeners() {
 
     const deleteMealBtn = document.getElementById('delete-meal-btn');
     if (deleteMealBtn) {
-        deleteMealBtn.addEventListener('click', () => {
-            if (confirm("Are you sure you want to delete this meal?")) {
+        deleteMealBtn.addEventListener('click', async () => {
+            const confirmed = await showConfirm("Are you sure you want to delete this meal?");
+            if (confirmed) {
                 const plan = plans.find(p => p.id === currentPlanId);
                 const variantId = editMealId.value;
                 const catType = editMealCategory.value;
