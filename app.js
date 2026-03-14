@@ -184,6 +184,7 @@ async function init() {
 
     initTheme();
     setupEventListeners();
+    setupLightbox();
     await loadData();
     await saveData(); // Manual push to align DB
     renderMainScreen();
@@ -446,7 +447,20 @@ function renderPlanDetails() {
     // Render Schedule List
     if (scheduledDatesList) {
         scheduledDatesList.innerHTML = '';
-        const sortedDates = Object.keys(plan.schedule || {}).sort();
+        const todayDate = new Date();
+        todayDate.setHours(0, 0, 0, 0);
+        const todayTime = todayDate.getTime();
+
+        const sortedDates = Object.keys(plan.schedule || {}).filter(date => {
+            const [y, m, d] = date.split('-');
+            const dateObj = new Date(y, m - 1, d);
+            return dateObj.getTime() >= todayTime;
+        }).sort();
+
+        if (sortedDates.length === 0) {
+            scheduledDatesList.innerHTML = '<p style="text-align: center; color: var(--gray); font-style: italic; margin-top: 10px;">No plans made for today or the future.</p>';
+        }
+
         sortedDates.forEach(date => {
             const dateItem = document.createElement('div');
             dateItem.style.display = 'flex';
@@ -575,15 +589,81 @@ function renderPlanDetails() {
                             const file = event.target.files[0];
                             if (!file) return;
                             
+                            let mealCardContainer = null;
+                            let overlayDiv = null;
+
                             if (activeBtnIcon) {
+                                activeBtnIcon.style.pointerEvents = 'none';
                                 activeBtnIcon.innerHTML = `<span style="font-size:12px;">...</span>`;
+                                mealCardContainer = activeBtnIcon.closest('div[style*="margin-bottom: 12px"]');
+                                if (mealCardContainer) {
+                                    mealCardContainer.style.position = 'relative';
+                                    overlayDiv = document.createElement('div');
+                                    overlayDiv.style.position = 'absolute';
+                                    overlayDiv.style.top = '0';
+                                    overlayDiv.style.left = '0';
+                                    overlayDiv.style.width = '100%';
+                                    overlayDiv.style.height = '100%';
+                                    overlayDiv.style.background = 'rgba(255,255,255,0.7)';
+                                    overlayDiv.style.display = 'flex';
+                                    overlayDiv.style.alignItems = 'center';
+                                    overlayDiv.style.justifyContent = 'center';
+                                    overlayDiv.style.fontWeight = 'bold';
+                                    overlayDiv.style.zIndex = '10';
+                                    overlayDiv.style.borderRadius = '8px';
+                                    overlayDiv.innerHTML = '<span>⏳ Uploading...</span>';
+                                    mealCardContainer.appendChild(overlayDiv);
+                                }
                             } else {
                                 console.log("Uploading photo for", cat);
                             }
                             
                             try {
-                                const path = `uploads/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.\-_]/g, '')}`;
-                                const { data, error } = await supabaseClient.storage.from('meal-photos').upload(path, file);
+                                const compressedFile = await new Promise((resolve, reject) => {
+                                    const reader = new FileReader();
+                                    reader.onload = (e) => {
+                                        const img = new Image();
+                                        img.onload = () => {
+                                            const canvas = document.createElement('canvas');
+                                            let width = img.width;
+                                            let height = img.height;
+                                            const MAX = 1200;
+                                            
+                                            if (width > height) {
+                                                if (width > MAX) {
+                                                    height *= MAX / width;
+                                                    width = MAX;
+                                                }
+                                            } else {
+                                                if (height > MAX) {
+                                                    width *= MAX / height;
+                                                    height = MAX;
+                                                }
+                                            }
+                                            
+                                            canvas.width = width;
+                                            canvas.height = height;
+                                            const ctx = canvas.getContext('2d');
+                                            ctx.drawImage(img, 0, 0, width, height);
+                                            
+                                            canvas.toBlob((blob) => {
+                                                if (blob) {
+                                                    const finalFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpeg", { type: 'image/jpeg' });
+                                                    resolve(finalFile);
+                                                } else {
+                                                    reject(new Error('Canvas to Blob failed.'));
+                                                }
+                                            }, 'image/jpeg', 0.7);
+                                        };
+                                        img.onerror = () => reject(new Error('Image failed to load.'));
+                                        img.src = e.target.result;
+                                    };
+                                    reader.onerror = () => reject(new Error('File reader failed.'));
+                                    reader.readAsDataURL(file);
+                                });
+
+                                const path = `uploads/${Date.now()}-${compressedFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '')}`;
+                                const { data, error } = await supabaseClient.storage.from('meal-photos').upload(path, compressedFile);
                                 if (error) throw error;
                                 
                                 const { data: urlData } = supabaseClient.storage.from('meal-photos').getPublicUrl(path);
@@ -645,8 +725,15 @@ function renderPlanDetails() {
                                     }
                                 }
                                 
-                                if (activeBtnIcon) activeBtnIcon.innerHTML = origHTML;
-                                else console.log("Upload complete.");
+                                if (activeBtnIcon) {
+                                    activeBtnIcon.innerHTML = origHTML;
+                                    activeBtnIcon.style.pointerEvents = 'auto';
+                                } else {
+                                    console.log("Upload complete.");
+                                }
+                                if (overlayDiv && overlayDiv.parentNode) {
+                                    overlayDiv.parentNode.removeChild(overlayDiv);
+                                }
                                 
                                 // Sync history screen visually if it is active
                                 if (document.getElementById('history-screen').classList.contains('active')) {
@@ -656,7 +743,13 @@ function renderPlanDetails() {
                             } catch (err) {
                                 console.error('Upload Error:', err);
                                 alert("Upload failed.");
-                                if (activeBtnIcon) activeBtnIcon.innerHTML = origHTML;
+                                if (activeBtnIcon) {
+                                    activeBtnIcon.innerHTML = origHTML;
+                                    activeBtnIcon.style.pointerEvents = 'auto';
+                                }
+                                if (overlayDiv && overlayDiv.parentNode) {
+                                    overlayDiv.parentNode.removeChild(overlayDiv);
+                                }
                             }
                         };
                         fileInput.click();
@@ -1287,79 +1380,154 @@ function renderHistoryScreen() {
         return;
     }
 
-    const sortedDates = Object.keys(plan.schedule).sort((a, b) => new Date(b) - new Date(a));
-    
-    if (sortedDates.length === 0) {
+    const now = Date.now();
+    const pastDates = Object.keys(plan.schedule).filter(date => {
+        const [y, m, d] = date.split('-');
+        const dateObj = new Date(y, m - 1, d);
+        return dateObj.getTime() < now;
+    }).sort((a, b) => new Date(b) - new Date(a));
+
+    if (pastDates.length === 0) {
         historyList.innerHTML = '<p>No history available.</p>';
         return;
     }
 
-    sortedDates.forEach(date => {
-        let dateString = date;
-        try {
-            const [y, m, d] = date.split('-');
-            const dateObj = new Date(y, m - 1, d);
-            dateString = dateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-        } catch (e) { }
+    const groupedByMonth = {};
+    pastDates.forEach(date => {
+        const [y, m, d] = date.split('-');
+        const dateObj = new Date(y, m - 1, d);
+        const monthYear = dateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        if (!groupedByMonth[monthYear]) {
+            groupedByMonth[monthYear] = [];
+        }
+        groupedByMonth[monthYear].push(date);
+    });
 
-        const dateBlock = document.createElement('div');
-        dateBlock.className = 'card';
-        dateBlock.style.marginBottom = '16px';
-        
-        // Add click listener to expand/collapse or navigate
-        dateBlock.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--gray-light); padding-bottom: 8px; margin-bottom: 12px;">
-                <h3 style="margin: 0;">${dateString}</h3>
-                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="expand-icon">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-            </div>
-            <div class="history-details" style="display: none;"></div>
+    let renderedAny = false;
+
+    Object.keys(groupedByMonth).forEach(monthYear => {
+        const monthGroup = document.createElement('div');
+        monthGroup.className = 'month-group';
+        monthGroup.style.marginBottom = '20px';
+
+        const monthHeader = document.createElement('div');
+        monthHeader.style.display = 'flex';
+        monthHeader.style.justifyContent = 'space-between';
+        monthHeader.style.alignItems = 'center';
+        monthHeader.style.padding = '12px';
+        monthHeader.style.background = 'var(--secondary-bg)';
+        monthHeader.style.border = '1px solid var(--gray-light)';
+        monthHeader.style.borderRadius = '8px';
+        monthHeader.style.cursor = 'pointer';
+        monthHeader.style.fontWeight = 'bold';
+        monthHeader.style.fontSize = '1.1em';
+        monthHeader.innerHTML = `
+            <span>${monthYear}</span>
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="month-expand-icon">
+                <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
         `;
 
-        const detailsContainer = dateBlock.querySelector('.history-details');
-        const expandIcon = dateBlock.querySelector('.expand-icon');
-        
-        let reportHtml = '';
-        Object.keys(plan.categories).forEach(cat => {
-            const sel = plan.schedule[date][cat];
-            const selId = typeof sel === 'object' ? sel.id : sel;
-            const isDone = typeof sel === 'object' && sel.done ? true : false;
-            const photoUrl = typeof sel === 'object' && sel.photoUrl ? sel.photoUrl : null;
+        const daysContainer = document.createElement('div');
+        daysContainer.style.display = 'none'; 
+        daysContainer.style.paddingTop = '12px';
+
+        let monthHasVisibleDays = false;
+
+        groupedByMonth[monthYear].forEach(date => {
+            let hasCompletedOrPhotos = false;
+            let reportHtml = '';
             
-            if (selId && plan.categories[cat]) {
-                const variant = plan.categories[cat].find(v => v.id === selId);
-                if (variant) {
-                    const doneText = isDone ? '✅ <span style="color: #28a745;">Done</span>' : '❌ <span style="color: #dc3545;">Missed</span>';
-                    let imgHtml = photoUrl ? `<img src="${photoUrl}" style="width: 100%; border-radius: 12px; margin-top: 8px; border: 1px solid var(--gray-light);" />` : '';
-                    
-                    reportHtml += `
-                        <div style="margin-bottom: 16px;">
-                            <strong>${cat}:</strong> ${variant.text}<br/>
-                            <div style="font-size: 0.9em; font-weight: 600; margin-top: 4px;">${doneText}</div>
-                            ${imgHtml}
-                        </div>
-                    `;
+            Object.keys(plan.categories).forEach(cat => {
+                const sel = plan.schedule[date][cat];
+                const selId = typeof sel === 'object' ? sel.id : sel;
+                const isDone = typeof sel === 'object' && sel.done ? true : false;
+                const photoUrl = typeof sel === 'object' && sel.photoUrl ? sel.photoUrl : null;
+                
+                if (isDone || photoUrl) {
+                    hasCompletedOrPhotos = true;
                 }
-            }
-        });
-        
-        if (!reportHtml) reportHtml = '<p>No meals planned for this date.</p>';
-        detailsContainer.innerHTML = reportHtml;
+                
+                if (selId && plan.categories[cat]) {
+                    const variant = plan.categories[cat].find(v => v.id === selId);
+                    if (variant) {
+                        const doneText = isDone ? '✅ <span style="color: #28a745;">Done</span>' : '❌ <span style="color: #dc3545;">Missed</span>';
+                        let imgHtml = photoUrl ? `<img src="${photoUrl}" loading="lazy" style="width: 100%; border-radius: 12px; margin-top: 8px; border: 1px solid var(--gray-light);" />` : '';
+                        
+                        reportHtml += `
+                            <div style="margin-bottom: 16px;">
+                                <strong>${cat}:</strong> ${variant.text}<br/>
+                                <div style="font-size: 0.9em; font-weight: 600; margin-top: 4px;">${doneText}</div>
+                                ${imgHtml}
+                            </div>
+                        `;
+                    }
+                }
+            });
 
-        dateBlock.style.cursor = 'pointer';
-        dateBlock.addEventListener('click', () => {
-            if (detailsContainer.style.display === 'none') {
-                detailsContainer.style.display = 'block';
-                expandIcon.innerHTML = '<polyline points="18 15 12 9 6 15"></polyline>';
-            } else {
-                detailsContainer.style.display = 'none';
-                expandIcon.innerHTML = '<polyline points="6 9 12 15 18 9"></polyline>';
+            if (!hasCompletedOrPhotos) {
+                reportHtml = '<p style="color: var(--gray); font-style: italic; margin-bottom: 0;">Empty day - No meals logged or completed</p>';
             }
+
+            monthHasVisibleDays = true;
+            renderedAny = true;
+
+            const [y, m, d] = date.split('-');
+            const dateObj = new Date(y, m - 1, d);
+            const dateString = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' });
+
+            const dateBlock = document.createElement('div');
+            dateBlock.className = 'card';
+            dateBlock.style.marginBottom = '12px';
+            
+            dateBlock.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--gray-light); padding-bottom: 8px; margin-bottom: 12px; cursor: pointer;">
+                    <h3 style="margin: 0; font-size: 1.05rem;">${dateString}</h3>
+                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="day-expand-icon">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="history-details" style="display: none;">
+                    ${reportHtml}
+                </div>
+            `;
+
+            const detailsContainer = dateBlock.querySelector('.history-details');
+            const dayExpandIcon = dateBlock.querySelector('.day-expand-icon');
+
+            dateBlock.querySelector('div').addEventListener('click', () => {
+                if (detailsContainer.style.display === 'none') {
+                    detailsContainer.style.display = 'block';
+                    dayExpandIcon.innerHTML = '<polyline points="18 15 12 9 6 15"></polyline>';
+                } else {
+                    detailsContainer.style.display = 'none';
+                    dayExpandIcon.innerHTML = '<polyline points="6 9 12 15 18 9"></polyline>';
+                }
+            });
+
+            daysContainer.appendChild(dateBlock);
         });
 
-        historyList.appendChild(dateBlock);
+        if (monthHasVisibleDays) {
+            monthHeader.addEventListener('click', () => {
+                if (daysContainer.style.display === 'none') {
+                    daysContainer.style.display = 'block';
+                    monthHeader.querySelector('.month-expand-icon').innerHTML = '<polyline points="18 15 12 9 6 15"></polyline>';
+                } else {
+                    daysContainer.style.display = 'none';
+                    monthHeader.querySelector('.month-expand-icon').innerHTML = '<polyline points="6 9 12 15 18 9"></polyline>';
+                }
+            });
+            
+            monthGroup.appendChild(monthHeader);
+            monthGroup.appendChild(daysContainer);
+            historyList.appendChild(monthGroup);
+        }
     });
+
+    if (!renderedAny) {
+        historyList.innerHTML = '<p>No history available.</p>';
+    }
 }
 
 // Ingredient Parser logic for Edit Modal
@@ -1390,6 +1558,103 @@ function parseIngredients(text) {
         }
     }
     return ings;
+}
+
+// Photo Viewer (Lightbox) Logic
+function setupLightbox() {
+    let currentScale = 1.0;
+    let currentTranslateX = 0;
+    let currentTranslateY = 0;
+    let lastScale = 1.0;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let isPanning = false;
+    let initialPinchDistance = null;
+
+    const lightbox = document.getElementById('photo-lightbox');
+    const lightboxImg = document.getElementById('lightbox-img');
+    if (!lightbox || !lightboxImg) return;
+
+    function updateImgTransform() {
+        lightboxImg.style.transform = `translate(${currentTranslateX}px, ${currentTranslateY}px) scale(${currentScale})`;
+    }
+
+    // Delegation for opening images
+    document.body.addEventListener('click', (e) => {
+        if (e.target.tagName === 'IMG' && e.target.id !== 'lightbox-img' && !e.target.classList.contains('ignore-lightbox')) {
+            lightboxImg.src = e.target.src;
+            lightbox.style.display = 'flex';
+            
+            // reset transforms
+            currentScale = 1.0;
+            currentTranslateX = 0;
+            currentTranslateY = 0;
+            lastScale = 1.0;
+            updateImgTransform();
+        }
+    });
+
+    document.getElementById('close-lightbox-btn')?.addEventListener('click', () => {
+        lightbox.style.display = 'none';
+        isPanning = false;
+    });
+
+    lightbox.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            initialPinchDistance = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+        } else if (e.touches.length === 1) {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            isPanning = true;
+        }
+    });
+
+    lightbox.addEventListener('touchmove', (e) => {
+        if (!isPanning && e.touches.length !== 2) return;
+        e.preventDefault(); 
+
+        if (e.touches.length === 2 && initialPinchDistance) {
+            const distance = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            const delta = distance / initialPinchDistance;
+            currentScale = Math.min(Math.max(1, lastScale * delta), 3);
+            updateImgTransform();
+        } else if (e.touches.length === 1 && isPanning) {
+            const touchX = e.touches[0].clientX;
+            const touchY = e.touches[0].clientY;
+            
+            const dx = touchX - touchStartX;
+            const dy = touchY - touchStartY;
+            
+            if (currentScale > 1) {
+                currentTranslateX += dx;
+                currentTranslateY += dy;
+                touchStartX = touchX;
+                touchStartY = touchY;
+                updateImgTransform();
+            } else {
+                if (dy > 50 && Math.abs(dy) > Math.abs(dx)) {
+                    lightbox.style.display = 'none';
+                    isPanning = false;
+                }
+            }
+        }
+    }, { passive: false });
+
+    lightbox.addEventListener('touchend', (e) => {
+        if (e.touches.length < 2) {
+            initialPinchDistance = null;
+            lastScale = currentScale;
+        }
+        if (e.touches.length === 0) {
+            isPanning = false;
+        }
+    });
 }
 
 // Start sequence
