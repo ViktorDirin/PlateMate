@@ -171,6 +171,41 @@ const themeToggleBtn = document.getElementById('theme-toggle');
 
 let currentlyViewingDate = null;
 
+const extraSnacksList = document.getElementById('extra-snacks-list');
+const snackNameInput = document.getElementById('snack-name-input');
+const snackAmountInput = document.getElementById('snack-amount-input');
+const addSnackBtn = document.getElementById('add-snack-btn');
+
+function renderExtraSnacks(snacks) {
+    if (!extraSnacksList) return;
+    if (!snacks || snacks.length === 0) {
+        extraSnacksList.innerHTML = '<span style="color: var(--gray); font-style: italic;">No extra snacks.</span>';
+        return;
+    }
+    let html = '';
+    snacks.forEach((snack, idx) => {
+        html += `<div style="display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--gray-light); margin-bottom: 6px;">
+            <span style="color: #333;"><strong>${snack.name}</strong> (${snack.amount})</span>
+            <button class="icon-btn remove-snack-btn" data-index="${idx}" style="color: #dc3545; padding: 4px; border: none; background: none; cursor: pointer;">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+        </div>`;
+    });
+    extraSnacksList.innerHTML = html;
+
+    extraSnacksList.querySelectorAll('.remove-snack-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const index = parseInt(e.currentTarget.getAttribute('data-index'));
+            const plan = plans.find(p => p.id === currentPlanId);
+            if (plan && currentlyViewingDate && plan.schedule[currentlyViewingDate]) {
+                plan.schedule[currentlyViewingDate].extraSnacks.splice(index, 1);
+                saveData();
+                renderExtraSnacks(plan.schedule[currentlyViewingDate].extraSnacks);
+            }
+        });
+    });
+}
+
 // Bootstrap Application
 async function init() {
     // Unregister any active service workers to prevent collisions
@@ -395,6 +430,24 @@ function navigateTo(screenId) {
     document.getElementById(screenId).classList.add('active');
 }
 
+function toggleMealLibrary(forceState = null) {
+    const content = document.getElementById('meal-library-content');
+    const icon = document.getElementById('meal-library-icon');
+    if (!content || !icon) return;
+
+    if (forceState === null) {
+        forceState = content.style.display === 'none';
+    }
+
+    if (forceState) {
+        content.style.display = 'block';
+        icon.style.transform = 'rotate(180deg)';
+    } else {
+        content.style.display = 'none';
+        icon.style.transform = 'none';
+    }
+}
+
 // Render the main dashboard screen
 function renderMainScreen() {
     planListEl.innerHTML = '';
@@ -436,13 +489,94 @@ function openPlan(id) {
         planDateInput.value = today;
     }
 
+    toggleMealLibrary(false);
     renderPlanDetails();
     navigateTo('plan-screen');
+}
+
+function calculateStreak(plan) {
+    if (!plan || !plan.schedule) return 0;
+    
+    // Normalize timestamps securely disregarding local user timezones
+    const ONE_DAY = 24 * 60 * 60 * 1000;
+    const [ty, tm, td] = new Date().toISOString().split('T')[0].split('-'); 
+    const todayObj = new Date(ty, tm - 1, td);
+    const todayTime = todayObj.getTime();
+
+    const relevantDates = Object.keys(plan.schedule).filter(date => {
+        const [y, m, d] = date.split('-');
+        return new Date(y, m - 1, d).getTime() <= todayTime;
+    }).sort((a, b) => new Date(b) - new Date(a));
+
+    if (relevantDates.length === 0) return 0;
+
+    let streak = 0;
+    let expectedTime = todayTime;
+    let i = 0;
+    
+    // Evaluate if today exists and its fulfillment
+    if (relevantDates[0]) {
+        const [y, m, d] = relevantDates[0].split('-');
+        if (new Date(y, m - 1, d).getTime() === todayTime) {
+            const scheduleDay = plan.schedule[relevantDates[0]];
+            let doneCount = 0;
+            if (plan.categories) {
+                Object.keys(plan.categories).forEach(cat => {
+                    const sel = scheduleDay[cat];
+                    if (sel && typeof sel === 'object' && sel.done) doneCount++;
+                });
+            }
+            if (doneCount >= 3) {
+                streak++;
+                expectedTime -= ONE_DAY;
+            } else {
+                expectedTime -= ONE_DAY;
+            }
+            i++;
+        } else {
+            expectedTime -= ONE_DAY;
+        }
+    }
+
+    // Traverse recursively backwards mapping the continuous chain
+    for (; i < relevantDates.length; i++) {
+        const [y, m, d] = relevantDates[i].split('-');
+        const iterTime = new Date(y, m - 1, d).getTime();
+        
+        if (iterTime !== expectedTime) break;
+
+        let doneCount = 0;
+        if (plan.categories) {
+            Object.keys(plan.categories).forEach(cat => {
+                const sel = plan.schedule[relevantDates[i]][cat];
+                if (sel && typeof sel === 'object' && sel.done) doneCount++;
+            });
+        }
+
+        if (doneCount >= 3) {
+            streak++;
+            expectedTime -= ONE_DAY;
+        } else break;
+    }
+    return streak;
 }
 
 function renderPlanDetails() {
     const plan = plans.find(p => p.id === currentPlanId);
     if (!plan) return;
+
+    // Render Streak Logic
+    const streakCounterContainer = document.getElementById('streak-counter-container');
+    const streakCountText = document.getElementById('streak-count-text');
+    if (streakCounterContainer && streakCountText) {
+        const currentStreak = calculateStreak(plan);
+        if (currentStreak > 0) {
+            streakCountText.textContent = currentStreak + (currentStreak === 1 ? " day in mode" : " days in mode");
+            streakCounterContainer.style.display = 'flex';
+        } else {
+            streakCounterContainer.style.display = 'none';
+        }
+    }
 
     // Render Schedule List
     if (scheduledDatesList) {
@@ -493,6 +627,9 @@ function renderPlanDetails() {
                 // View specific saved menu directly
                 currentlyViewingDate = date;
                 dailyMenuTitle.textContent = `Menu for ${dateString}`;
+
+                if (!plan.schedule[date].extraSnacks) plan.schedule[date].extraSnacks = [];
+                renderExtraSnacks(plan.schedule[date].extraSnacks);
 
                 let menuHtml = '';
                 Object.keys(plan.categories).forEach(cat => {
@@ -883,6 +1020,11 @@ function renderPlanDetails() {
 
 // Attach standard DOM Event Listeners
 function setupEventListeners() {
+    const mealLibraryHeader = document.getElementById('meal-library-header');
+    if (mealLibraryHeader) {
+        mealLibraryHeader.addEventListener('click', () => toggleMealLibrary());
+    }
+
     // Top-Level Event Delegation for Categories Container (Add food, delete category, edit/select variant)
     categoriesContainer.addEventListener('click', async (e) => {
         // Delete Category check
@@ -1189,6 +1331,7 @@ function setupEventListeners() {
             });
             
             datePickerModal.classList.remove('active');
+            toggleMealLibrary(true);
             renderPlanDetails();
         });
     }
@@ -1264,6 +1407,7 @@ function setupEventListeners() {
         cancelPlanningBtn.addEventListener('click', () => {
             activePlanningDate = null;
             tempSelections = {};
+            toggleMealLibrary(false);
             renderPlanDetails();
         });
     }
@@ -1295,6 +1439,7 @@ function setupEventListeners() {
                     // Reset selection state after saving
                     activePlanningDate = null;
                     tempSelections = {};
+                    toggleMealLibrary(false);
                     // Just cleanly re-render
                     renderPlanDetails();
                 }
@@ -1308,6 +1453,28 @@ function setupEventListeners() {
 
     if (closeShoppingListBtn) closeShoppingListBtn.addEventListener('click', () => shoppingListModal.classList.remove('active'));
     shoppingListModal.addEventListener('click', (e) => { if (e.target === shoppingListModal) shoppingListModal.classList.remove('active'); });
+
+    if (addSnackBtn) {
+        addSnackBtn.addEventListener('click', () => {
+            const plan = plans.find(p => p.id === currentPlanId);
+            if (!plan || !currentlyViewingDate || !plan.schedule[currentlyViewingDate]) return;
+            
+            const name = snackNameInput.value.trim();
+            const amount = snackAmountInput.value.trim();
+            if (!name) return;
+            
+            if (!plan.schedule[currentlyViewingDate].extraSnacks) {
+                plan.schedule[currentlyViewingDate].extraSnacks = [];
+            }
+            plan.schedule[currentlyViewingDate].extraSnacks.push({ name, amount: amount || '1 serving' });
+            
+            saveData();
+            
+            snackNameInput.value = '';
+            snackAmountInput.value = '';
+            renderExtraSnacks(plan.schedule[currentlyViewingDate].extraSnacks);
+        });
+    }
 
     // Generate Shopping List
     if (generateShoppingBtn) {
@@ -1454,9 +1621,16 @@ function renderHistoryScreen() {
                         const doneText = isDone ? '✅ <span style="color: #28a745;">Done</span>' : '❌ <span style="color: #dc3545;">Missed</span>';
                         let imgHtml = photoUrl ? `<img src="${photoUrl}" loading="lazy" style="width: 100%; border-radius: 12px; margin-top: 8px; border: 1px solid var(--gray-light);" />` : '';
                         
+                        let ingredientsHtml = '';
+                        if (variant.ingredients && variant.ingredients.length > 0) {
+                            const ingList = variant.ingredients.map(ing => `• ${ing.n} ${ing.a}${ing.u}`).join(', ');
+                            ingredientsHtml = `<div style="font-size: 0.85em; color: var(--gray); margin-top: 4px; line-height: 1.4;">${ingList}</div>`;
+                        }
+
                         reportHtml += `
                             <div style="margin-bottom: 16px;">
-                                <strong>${cat}:</strong> ${variant.text}<br/>
+                                <strong>${cat}:</strong> ${variant.text}
+                                ${ingredientsHtml}
                                 <div style="font-size: 0.9em; font-weight: 600; margin-top: 4px;">${doneText}</div>
                                 ${imgHtml}
                             </div>
@@ -1464,6 +1638,20 @@ function renderHistoryScreen() {
                     }
                 }
             });
+
+            // incorporate Extra Snacks
+            const snacks = plan.schedule[date].extraSnacks;
+            if (snacks && snacks.length > 0) {
+                hasCompletedOrPhotos = true;
+                let listHtml = snacks.map(s => `• ${s.name} ${s.amount}`).join('<br/>');
+                
+                reportHtml += `
+                    <div style="margin-bottom: 16px;">
+                        <strong style="color: var(--primary-blue);">Personal Snacks:</strong>
+                        <div style="font-size: 0.9em; margin-top: 4px; line-height: 1.4;">${listHtml}</div>
+                    </div>
+                `;
+            }
 
             if (!hasCompletedOrPhotos) {
                 reportHtml = '<p style="color: var(--gray); font-style: italic; margin-bottom: 0;">Empty day - No meals logged or completed</p>';

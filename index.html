@@ -11,6 +11,22 @@
     <meta name="theme-color" content="#f8f9fa">
     <link rel="icon" type="image/png" href="icon.png" sizes="192x192">
     <link rel="apple-touch-icon" href="icon.png">
+    <style>
+        :root[data-theme="light"] {
+            --brand-blue: #009ACD;
+            --brand-accent: #C08081; /* Muted Rose */
+        }
+        :root[data-theme="dark"] {
+            --brand-blue: #00BFFF; /* Sky Blue */
+            --brand-accent: #E97451; /* Deep Coral */
+        }
+        #add-plan-btn {
+            bottom: 65px !important; /* Spacing above absolute footer */
+        }
+        #main-screen .content {
+            padding-bottom: 60px !important; /* Padding for scrollable area */
+        }
+    </style>
 </head>
 
 <body>
@@ -18,7 +34,7 @@
         <!-- Main Screen -->
         <main id="main-screen" class="screen active">
             <header class="app-header">
-                <h1>PlateMate</h1>
+                <h1 style="color: var(--brand-blue);">PlateMate</h1>
                 <div style="display: flex; gap: 8px;">
                     <div id="sync-status-icon" class="icon-btn" aria-label="Sync Status" style="color: #dc3545; display: flex; align-items: center; justify-content: center;">
                         <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
@@ -47,6 +63,12 @@
                     </svg>
                 </button>
             </div>
+            
+            <div style="position: absolute; bottom: 20px; left: 0; right: 0; text-align: center; width: 100%; font-size: 0.85em; color: var(--gray, #888); font-style: italic; pointer-events: none; z-index: 5;">
+                <span style="color: var(--brand-blue); font-weight: bold; font-style: normal;">PlateMate</span> 
+                v 0.2.14 | 
+                <span style="color: var(--brand-accent); font-weight: bold; font-style: normal;">Beta</span>
+            </div>
         </main>
 
         <!-- Plan Details Screen (Categories) -->
@@ -63,6 +85,11 @@
                 <h1 id="plan-title" style="display: flex; align-items: center; gap: 8px;"><span id="plan-title-text" style="margin-right: 12px;">Plan Name</span> <button id="edit-plan-title-btn" class="icon-btn" aria-label="Edit Plan Name" style="color: var(--primary-blue); padding: 0;"><svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button></h1>
             </header>
             <div class="content">
+                <div id="streak-counter-container" style="display: none; justify-content: center; margin-bottom: 24px;">
+                    <div id="streak-counter" style="display: inline-flex; align-items: center; justify-content: center; padding: 10px 24px; border-radius: 30px; font-weight: 700; font-size: 1.1em; background: var(--secondary-bg); color: #ff5722; border: 2px solid #ff5722; box-shadow: 0 0 12px rgba(255, 87, 34, 0.5), 0 0 24px rgba(255, 87, 34, 0.3); text-shadow: 0 0 6px rgba(255, 87, 34, 0.3);">
+                        🔥 <span id="streak-count-text" style="margin-left: 8px;"></span>
+                    </div>
+                </div>
                 <div style="margin-bottom: 24px; text-align: center;">
                     <button id="view-history-btn" class="btn btn-secondary" style="width: 100%; margin-bottom: 12px;">📜 View History</button>
                     <button id="guidelines-btn" class="btn btn-secondary" style="width: 100%;">Diet Guidelines</button>
@@ -93,11 +120,22 @@
                     </div>
                 </div>
 
-                <div id="categories-container" class="categories">
-                    <!-- Diet categories (Breakfast, Lunch, etc.) will be rendered here -->
+                <div id="meal-library-accordion" class="card" style="margin-bottom: 24px; padding: 0; overflow: hidden; border: 2px solid var(--primary-blue); background: var(--secondary-bg); box-shadow: 0 0 10px rgba(74, 144, 226, 0.4);">
+                    <div id="meal-library-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px; cursor: pointer; background: var(--secondary-bg); border-bottom: 1px solid var(--primary-blue);">
+                        <h3 style="margin: 0; font-size: 1.125rem;">📚 Meal Library (Edit Variants)</h3>
+                        <svg id="meal-library-icon" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.3s ease;">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </div>
+                    <div id="meal-library-content" style="display: none; padding: 16px;">
+                        <div id="categories-container" class="categories">
+                            <!-- Diet categories (Breakfast, Lunch, etc.) will be rendered here -->
+                        </div>
+                        <button id="add-category-btn" class="btn btn-secondary"
+                            style="width: 100%; margin-top: 16px; margin-bottom: 8px;">+ Add Category</button>
+                    </div>
                 </div>
-                <button id="add-category-btn" class="btn btn-secondary"
-                    style="width: 100%; margin-top: 16px; margin-bottom: 24px;">+ Add Category</button>
+
                 <button id="scroll-to-top-btn" class="btn btn-secondary" style="width: 100%; margin-bottom: 24px; display: none;">↑ Back to Confirm</button>
             </div>
         </main>
@@ -199,6 +237,19 @@
                     </svg>
                 </button>
             </div>
+            
+            <div id="extra-snacks-section" style="margin-bottom: 16px; padding: 12px; border-radius: 8px; background: var(--gray-light);">
+                <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 1rem;">Extra Snacks</h3>
+                <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                    <input type="text" id="snack-name-input" placeholder="Name (e.g. Apple)" style="flex: 2; padding: 8px; border: 1px solid var(--gray); border-radius: 6px;" />
+                    <input type="text" id="snack-amount-input" placeholder="Amt (e.g. 1 pc)" style="flex: 1; padding: 8px; border: 1px solid var(--gray); border-radius: 6px;" />
+                    <button id="add-snack-btn" class="btn btn-primary" style="padding: 8px 12px;">+</button>
+                </div>
+                <div id="extra-snacks-list" style="display: flex; flex-direction: column; gap: 4px; font-size: 0.9em;">
+                    <!-- Filled dynamically -->
+                </div>
+            </div>
+
             <div id="daily-menu-content" style="margin-bottom: 20px;"></div>
             <button id="generate-shopping-btn" class="btn btn-primary" style="width: 100%;">Generate Shopping
                 List</button>
