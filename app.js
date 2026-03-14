@@ -184,8 +184,12 @@ function renderExtraSnacks(snacks) {
     }
     let html = '';
     snacks.forEach((snack, idx) => {
+        const timeStr = snack.time ? snack.time : '';
+        const timeHtml = timeStr
+            ? `<span class="snack-time-display" data-index="${idx}" style="margin-left:6px; font-weight:bold; color:var(--primary-blue); cursor:pointer;">[${timeStr}]</span>`
+            : '';
         html += `<div style="display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--gray-light); margin-bottom: 6px;">
-            <span style="color: #333;"><strong>${snack.name}</strong> (${snack.amount})</span>
+            <span style="color: #333;"><strong>${snack.name}</strong> (${snack.amount})${timeHtml}</span>
             <button class="icon-btn remove-snack-btn" data-index="${idx}" style="color: #dc3545; padding: 4px; border: none; background: none; cursor: pointer;">
                 <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
@@ -202,6 +206,42 @@ function renderExtraSnacks(snacks) {
                 saveData();
                 renderExtraSnacks(plan.schedule[currentlyViewingDate].extraSnacks);
             }
+        });
+    });
+
+    extraSnacksList.querySelectorAll('.snack-time-display').forEach(el => {
+        el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const idx = parseInt(el.getAttribute('data-index'));
+            const plan = plans.find(p => p.id === currentPlanId);
+            if (!plan || !currentlyViewingDate) return;
+            const snack = plan.schedule[currentlyViewingDate].extraSnacks[idx];
+            if (!snack) return;
+            const currentVal = snack.time || '';
+
+            const input = document.createElement('input');
+            input.type = 'tel';
+            input.value = currentVal.replace(':', '');
+            input.style.cssText = 'width:55px; margin-left:6px; padding:2px 4px; border-radius:4px; border:1px solid var(--primary-blue);';
+
+            input.addEventListener('input', () => {
+                let v = input.value.replace(/\D/g, '').slice(0, 4);
+                input.value = v;
+            });
+            input.addEventListener('blur', () => {
+                let v = input.value.replace(/\D/g, '');
+                let formatted = currentVal;
+                if (v.length === 4) formatted = v.slice(0, 2) + ':' + v.slice(2);
+                else if (v.length === 3) formatted = '0' + v.slice(0, 1) + ':' + v.slice(1);
+                snack.time = formatted;
+                saveData();
+                renderExtraSnacks(plan.schedule[currentlyViewingDate].extraSnacks);
+            });
+            input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') input.blur(); });
+
+            el.style.display = 'none';
+            el.parentNode.insertBefore(input, el.nextSibling);
+            input.focus();
         });
     });
 }
@@ -632,7 +672,16 @@ function renderPlanDetails() {
                 renderExtraSnacks(plan.schedule[date].extraSnacks);
 
                 let menuHtml = '';
-                Object.keys(plan.categories).forEach(cat => {
+                const menuOrderIndex = (c) => {
+                    const lc = c.toLowerCase();
+                    if (lc.includes('breakfast')) return 1;
+                    if (lc.includes('lunch')) return 2;
+                    if (lc.includes('dinner')) return 3;
+                    if (lc.includes('snack')) return 4;
+                    return 5;
+                };
+                const sortedMenuCats = Object.keys(plan.categories).sort((a, b) => menuOrderIndex(a) - menuOrderIndex(b));
+                sortedMenuCats.forEach(cat => {
                     const sel = plan.schedule[date][cat];
                     const selId = typeof sel === 'object' ? sel.id : sel;
                     const isDone = typeof sel === 'object' && sel.done ? true : false;
@@ -640,10 +689,17 @@ function renderPlanDetails() {
                     if (selId && plan.categories[cat]) {
                         const variant = plan.categories[cat].find(v => v.id === selId);
                         if (variant) {
-                            const doneStyle = isDone ? 'text-decoration: line-through; opacity: 0.6;' : '';
+                            const containerOpacity = isDone ? 'opacity: 0.6;' : '';
+                            const textDecoration = isDone ? 'text-decoration: line-through;' : '';
                             const checkedAttr = isDone ? 'checked' : '';
                             const photoUrl = typeof sel === 'object' && sel.photoUrl ? sel.photoUrl : null;
+                            const completionTime = typeof sel === 'object' && sel.completionTime ? sel.completionTime : null;
                             
+                            let timeHtml = '';
+                            if (isDone && completionTime) {
+                                timeHtml = `<span class="meal-time-display" data-cat="${cat}" style="margin-left: 8px; font-weight: bold; color: var(--primary-blue); cursor: pointer; display: inline-block;">[${completionTime}]</span>`;
+                            }
+
                             let photoHtml = '';
                             if (photoUrl) {
                                 photoHtml = `
@@ -660,10 +716,10 @@ function renderPlanDetails() {
                             }
 
                             menuHtml += `
-                                <div style="margin-bottom: 12px; display: flex; align-items: flex-start; gap: 12px; ${doneStyle}">
+                                <div style="margin-bottom: 12px; display: flex; align-items: flex-start; gap: 12px; ${containerOpacity}">
                                     <input type="checkbox" class="meal-completed-checkbox" data-cat="${cat}" style="transform: scale(1.3); margin-top: 4px; flex: 0 0 20px;" ${checkedAttr}>
                                     <div style="flex-grow: 1;">
-                                        <strong>${cat}:</strong><br/> ${variant.text}
+                                        <strong>${cat}:</strong>${timeHtml}<br/> <span style="${textDecoration}">${variant.text}</span>
                                         ${photoHtml}
                                     </div>
                                     <button class="icon-btn photo-btn" data-cat="${cat}" style="color: var(--primary-blue); padding: 4px; margin-top: -2px;">
@@ -690,24 +746,115 @@ function renderPlanDetails() {
                         const selId = typeof sel === 'object' ? sel.id : sel;
                         const photoUrl = typeof sel === 'object' && sel.photoUrl ? sel.photoUrl : null;
                         
+                        let historyRecord = typeof sel === 'object' && sel.historyRecord ? sel.historyRecord : null;
+                        let completionTime = typeof sel === 'object' && sel.completionTime ? sel.completionTime : null;
+                        
+                        if (isChecked) {
+                            const variant = plan.categories[cat] ? plan.categories[cat].find(v => v.id === selId) : null;
+                            if (variant) {
+                                historyRecord = {
+                                    text: variant.text,
+                                    ingredients: JSON.parse(JSON.stringify(variant.ingredients || []))
+                                };
+                            }
+                            if (!completionTime) {
+                                const now = new Date();
+                                const hh = String(now.getHours()).padStart(2, '0');
+                                const mm = String(now.getMinutes()).padStart(2, '0');
+                                completionTime = `${hh}:${mm}`;
+                            }
+                        }
+                        
                         plan.schedule[currentlyViewingDate][cat] = {
                             id: selId,
                             done: isChecked,
-                            photoUrl: photoUrl
+                            photoUrl: photoUrl,
+                            historyRecord: historyRecord,
+                            completionTime: completionTime
                         };
                         saveData();
                         
-                        // Update visual presentation directly (strikethrough)
                         const container = e.target.parentElement;
+                        const textSpan = container.querySelector('span[style*="text-decoration"]');
+                        let timeSpan = container.querySelector('.meal-time-display');
+                        const strongTag = container.querySelector('strong');
+                        
                         if (isChecked) {
-                            container.style.textDecoration = 'line-through';
                             container.style.opacity = '0.6';
+                            if (textSpan) textSpan.style.textDecoration = 'line-through';
+                            
+                            if (!timeSpan && completionTime) {
+                                timeSpan = document.createElement('span');
+                                timeSpan.className = 'meal-time-display';
+                                timeSpan.setAttribute('data-cat', cat);
+                                timeSpan.style.cssText = 'margin-left: 8px; font-weight: bold; color: var(--primary-blue); cursor: pointer; display: inline-block; text-decoration: none;';
+                                timeSpan.textContent = `[${completionTime}]`;
+                                strongTag.parentNode.insertBefore(timeSpan, strongTag.nextSibling);
+                                timeSpan.addEventListener('click', attachTimeEditListener);
+                            } else if (timeSpan) {
+                                timeSpan.style.display = 'inline-block';
+                            }
                         } else {
-                            container.style.textDecoration = 'none';
                             container.style.opacity = '1';
+                            if (textSpan) textSpan.style.textDecoration = 'none';
+                            if (timeSpan) timeSpan.style.display = 'none';
                         }
                     });
                 });
+
+                function attachTimeEditListener(e) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    const cat = e.target.getAttribute('data-cat');
+                    const currentVal = e.target.textContent.replace(/\[|\]/g, '');
+                    
+                    const input = document.createElement('input');
+                    input.type = 'tel';
+                    input.value = currentVal.replace(':', '');
+                    input.style.width = '60px';
+                    input.style.marginLeft = '8px';
+                    input.style.padding = '2px 4px';
+                    input.style.borderRadius = '4px';
+                    input.style.border = '1px solid var(--primary-blue)';
+                    
+                    input.addEventListener('blur', () => {
+                        let val = input.value.replace(/\D/g, '');
+                        if (val.length > 4) val = val.slice(0, 4);
+                        if (val.length === 4) {
+                            val = val.slice(0, 2) + ':' + val.slice(2);
+                        } else if (val.length === 3) {
+                            val = '0' + val.slice(0, 1) + ':' + val.slice(1);
+                        } else {
+                            val = currentVal;
+                        }
+                        
+                        const sel = plan.schedule[currentlyViewingDate][cat];
+                        if (typeof sel === 'object') {
+                            sel.completionTime = val;
+                            saveData();
+                        }
+                        
+                        e.target.textContent = `[${val}]`;
+                        e.target.style.display = 'inline-block';
+                        input.remove();
+                    });
+                    
+                    input.addEventListener('keydown', (ev) => {
+                        if (ev.key === 'Enter') input.blur();
+                    });
+                    
+                    input.addEventListener('input', (ev) => {
+                        let val = input.value.replace(/\D/g, '');
+                        if (val.length > 4) val = val.slice(0, 4);
+                        input.value = val;
+                    });
+                    
+                    e.target.style.display = 'none';
+                    e.target.parentNode.insertBefore(input, e.target.nextSibling);
+                    input.focus();
+                }
+
+                dailyMenuContent.querySelectorAll('.meal-time-display').forEach(el => el.addEventListener('click', attachTimeEditListener));
 
                 // Add event listeners for photo upload
                 dailyMenuContent.querySelectorAll('.photo-btn').forEach(btn => {
@@ -757,46 +904,57 @@ function renderPlanDetails() {
                             
                             try {
                                 const compressedFile = await new Promise((resolve, reject) => {
-                                    const reader = new FileReader();
-                                    reader.onload = (e) => {
-                                        const img = new Image();
-                                        img.onload = () => {
-                                            const canvas = document.createElement('canvas');
-                                            let width = img.width;
-                                            let height = img.height;
-                                            const MAX = 1200;
-                                            
-                                            if (width > height) {
-                                                if (width > MAX) {
-                                                    height *= MAX / width;
-                                                    width = MAX;
-                                                }
-                                            } else {
-                                                if (height > MAX) {
-                                                    width *= MAX / height;
-                                                    height = MAX;
-                                                }
+                                    const img = new Image();
+                                    const objectUrl = URL.createObjectURL(file);
+                                    
+                                    img.onload = () => {
+                                        URL.revokeObjectURL(objectUrl);
+                                        const canvas = document.createElement('canvas');
+                                        let width = img.width;
+                                        let height = img.height;
+                                        const MAX = 1200;
+                                        
+                                        if (width > height) {
+                                            if (width > MAX) {
+                                                height *= MAX / width;
+                                                width = MAX;
                                             }
-                                            
-                                            canvas.width = width;
-                                            canvas.height = height;
-                                            const ctx = canvas.getContext('2d');
-                                            ctx.drawImage(img, 0, 0, width, height);
-                                            
-                                            canvas.toBlob((blob) => {
-                                                if (blob) {
+                                        } else {
+                                            if (height > MAX) {
+                                                width *= MAX / height;
+                                                height = MAX;
+                                            }
+                                        }
+                                        
+                                        canvas.width = width;
+                                        canvas.height = height;
+                                        const ctx = canvas.getContext('2d');
+                                        ctx.drawImage(img, 0, 0, width, height);
+                                        
+                                        canvas.toBlob((blob) => {
+                                            img.src = '';
+                                            canvas.width = 0;
+                                            canvas.height = 0;
+                                            if (blob) {
+                                                try {
                                                     const finalFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpeg", { type: 'image/jpeg' });
                                                     resolve(finalFile);
-                                                } else {
-                                                    reject(new Error('Canvas to Blob failed.'));
+                                                } catch (memErr) {
+                                                    reject(new Error('Out of memory creating file: ' + memErr.message));
+                                                } finally {
+                                                    // Allow blob to be GC'd
+                                                    blob = null;
                                                 }
-                                            }, 'image/jpeg', 0.7);
-                                        };
-                                        img.onerror = () => reject(new Error('Image failed to load.'));
-                                        img.src = e.target.result;
+                                            } else {
+                                                reject(new Error('Canvas to Blob failed.'));
+                                            }
+                                        }, 'image/jpeg', 0.7);
                                     };
-                                    reader.onerror = () => reject(new Error('File reader failed.'));
-                                    reader.readAsDataURL(file);
+                                    img.onerror = () => {
+                                        URL.revokeObjectURL(objectUrl);
+                                        reject(new Error('Image failed to load.'));
+                                    };
+                                    img.src = objectUrl;
                                 });
 
                                 const path = `uploads/${Date.now()}-${compressedFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '')}`;
@@ -1426,11 +1584,15 @@ function setupEventListeners() {
                         const existingId = (existingSel && typeof existingSel === 'object') ? existingSel.id : existingSel;
                         const existingDone = (existingSel && typeof existingSel === 'object') ? existingSel.done : false;
                         const existingPhotoUrl = (existingSel && typeof existingSel === 'object') ? existingSel.photoUrl : null;
+                        const existingHistory = (existingSel && typeof existingSel === 'object') ? existingSel.historyRecord : null;
+                        const existingTime = (existingSel && typeof existingSel === 'object') ? existingSel.completionTime : null;
                         
                         newSchedule[cat] = {
                             id: tempSelections[cat],
                             done: (existingId === tempSelections[cat]) ? existingDone : false,
-                            photoUrl: (existingId === tempSelections[cat]) ? existingPhotoUrl : null
+                            photoUrl: (existingId === tempSelections[cat]) ? existingPhotoUrl : null,
+                            historyRecord: (existingId === tempSelections[cat]) ? existingHistory : null,
+                            completionTime: (existingId === tempSelections[cat]) ? existingTime : null
                         };
                     });
                     
@@ -1466,7 +1628,13 @@ function setupEventListeners() {
             if (!plan.schedule[currentlyViewingDate].extraSnacks) {
                 plan.schedule[currentlyViewingDate].extraSnacks = [];
             }
-            plan.schedule[currentlyViewingDate].extraSnacks.push({ name, amount: amount || '1 serving' });
+
+            const now = new Date();
+            const hh = String(now.getHours()).padStart(2, '0');
+            const mm = String(now.getMinutes()).padStart(2, '0');
+            const snackTime = `${hh}:${mm}`;
+
+            plan.schedule[currentlyViewingDate].extraSnacks.push({ name, amount: amount || '1 serving', time: snackTime });
             
             saveData();
             
@@ -1605,20 +1773,35 @@ function renderHistoryScreen() {
             let hasCompletedOrPhotos = false;
             let reportHtml = '';
             
-            Object.keys(plan.categories).forEach(cat => {
+            const orderIndex = (c) => {
+                const lowerC = c.toLowerCase();
+                if (lowerC.includes('breakfast')) return 1;
+                if (lowerC.includes('lunch')) return 2;
+                if (lowerC.includes('dinner')) return 3;
+                if (lowerC.includes('snack')) return 4;
+                return 5;
+            };
+
+            const sortedCats = Object.keys(plan.schedule[date] || {}).filter(c => c !== 'extraSnacks').sort((a, b) => {
+                return orderIndex(a) - orderIndex(b);
+            });
+
+            sortedCats.forEach(cat => {
                 const sel = plan.schedule[date][cat];
                 const selId = typeof sel === 'object' ? sel.id : sel;
                 const isDone = typeof sel === 'object' && sel.done ? true : false;
                 const photoUrl = typeof sel === 'object' && sel.photoUrl ? sel.photoUrl : null;
+                const completionTime = typeof sel === 'object' && sel.completionTime ? sel.completionTime : null;
                 
                 if (isDone || photoUrl) {
                     hasCompletedOrPhotos = true;
                 }
                 
-                if (selId && plan.categories[cat]) {
-                    const variant = plan.categories[cat].find(v => v.id === selId);
+                if (selId) {
+                    const variant = (typeof sel === 'object' && sel.historyRecord) ? sel.historyRecord : (plan.categories[cat] ? plan.categories[cat].find(v => v.id === selId) : null);
                     if (variant) {
-                        const doneText = isDone ? '✅ <span style="color: #28a745;">Done</span>' : '❌ <span style="color: #dc3545;">Missed</span>';
+                        const timeStr = completionTime ? ` [${completionTime}]` : '';
+                        const doneText = isDone ? `✅ <span style="color: #28a745;">Done${timeStr}</span>` : '❌ <span style="color: #dc3545;">Missed</span>';
                         let imgHtml = photoUrl ? `<img src="${photoUrl}" loading="lazy" style="width: 100%; border-radius: 12px; margin-top: 8px; border: 1px solid var(--gray-light);" />` : '';
                         
                         let ingredientsHtml = '';
