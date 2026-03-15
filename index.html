@@ -332,7 +332,25 @@
         </div>
     </div>
 
-    <input type="file" id="meal-photo-input" accept="image/*" capture="environment" style="display: none;">
+    <input type="file" id="meal-photo-input" accept="image/*" style="display: none;">
+
+    <!-- Photo Source Chooser Modal (Camera vs Gallery fallback for Redmi) -->
+    <div id="photo-source-modal" class="modal">
+        <div class="modal-content card" style="max-width: 80%; text-align: center;">
+            <h3 style="margin-bottom: 20px;">Add Photo</h3>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <button id="choose-camera-btn" class="btn btn-primary" style="width: 100%; font-size: 1.1rem; padding: 16px;">
+                    📷 Camera
+                </button>
+                <button id="choose-gallery-btn" class="btn btn-secondary" style="width: 100%; font-size: 1.1rem; padding: 16px;">
+                    🖼️ Gallery
+                </button>
+                <button id="cancel-photo-source-btn" class="btn btn-secondary" style="width: 100%; color: #dc3545;">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
 
     <div id="photo-lightbox" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10000; background: rgba(0,0,0,0.9); touch-action: none; flex-direction: column; align-items: center; justify-content: center;">
         <button id="close-lightbox-btn" style="position: absolute; top: 16px; right: 16px; z-index: 10001; background: rgba(255,255,255,0.2); border: none; border-radius: 50%; width: 40px; height: 40px; color: white; display: flex; align-items: center; justify-content: center; font-size: 24px; cursor: pointer;">×</button>
@@ -342,7 +360,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=0.3.2"></script>
+    <script src="app.js?v=0.3.3"></script>
 </body>
 
 </html>

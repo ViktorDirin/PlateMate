@@ -377,8 +377,18 @@ body {
 .modal-content {
     width: 100%;
     max-width: 90%;
-    max-height: 90%;
+    max-height: 85vh;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Daily menu needs full scroll containment on Android */
+#daily-menu-modal .modal-content {
+    max-height: 85vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
 }
 
 .modal-content h2 {
