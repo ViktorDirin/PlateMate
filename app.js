@@ -432,6 +432,12 @@ async function saveData() {
     } catch (e) {
         console.error("Supabase save error:", e);
         setSyncStatus(false);
+        // Detect storage quota exceeded errors from Supabase
+        const msg = (e.message || '').toLowerCase();
+        const errCode = (e.code || '').toLowerCase();
+        if (msg.includes('quota') || msg.includes('payload too large') || msg.includes('entity too large') || errCode.includes('413') || errCode.includes('403')) {
+            alert("⚠️ Cloud storage is full. Please delete old photos from history to free up space.");
+        }
     }
 }
 
@@ -672,15 +678,21 @@ function renderPlanDetails() {
                 renderExtraSnacks(plan.schedule[date].extraSnacks);
 
                 let menuHtml = '';
+                // Strict sort order: Breakfast → Lunch → Dinner* → Snack* → others
+                const MENU_SORT_ORDER = ['breakfast', 'lunch', 'dinner', 'dinner 1', 'dinner 2', 'snack', 'snacks'];
                 const menuOrderIndex = (c) => {
                     const lc = c.toLowerCase();
-                    if (lc.includes('breakfast')) return 1;
-                    if (lc.includes('lunch')) return 2;
-                    if (lc.includes('dinner')) return 3;
-                    if (lc.includes('snack')) return 4;
-                    return 5;
+                    // Exact match first
+                    const exactIdx = MENU_SORT_ORDER.indexOf(lc);
+                    if (exactIdx !== -1) return exactIdx;
+                    // Prefix/contains match fallback
+                    if (lc.startsWith('breakfast')) return 0;
+                    if (lc.startsWith('lunch')) return 10;
+                    if (lc.startsWith('dinner')) return 20;
+                    if (lc.startsWith('snack')) return 30;
+                    return 99;
                 };
-                const sortedMenuCats = Object.keys(plan.categories).sort((a, b) => menuOrderIndex(a) - menuOrderIndex(b));
+                const sortedMenuCats = Object.keys(plan.categories).slice().sort((a, b) => menuOrderIndex(a) - menuOrderIndex(b));
                 sortedMenuCats.forEach(cat => {
                     const sel = plan.schedule[date][cat];
                     const selId = typeof sel === 'object' ? sel.id : sel;
@@ -903,63 +915,87 @@ function renderPlanDetails() {
                             }
                             
                             try {
+                                // --- Hardened Compression: target 1200px, quality 0.7, max ~1.8MB ---
                                 const compressedFile = await new Promise((resolve, reject) => {
                                     const img = new Image();
                                     const objectUrl = URL.createObjectURL(file);
-                                    
+
                                     img.onload = () => {
+                                        // Free the object URL immediately after load
                                         URL.revokeObjectURL(objectUrl);
-                                        const canvas = document.createElement('canvas');
-                                        let width = img.width;
-                                        let height = img.height;
+
+                                        // Step 1: Calculate target dimensions (max 1200px on longest side)
                                         const MAX = 1200;
-                                        
+                                        let width = img.naturalWidth || img.width;
+                                        let height = img.naturalHeight || img.height;
                                         if (width > height) {
-                                            if (width > MAX) {
-                                                height *= MAX / width;
-                                                width = MAX;
-                                            }
+                                            if (width > MAX) { height = Math.round(height * MAX / width); width = MAX; }
                                         } else {
-                                            if (height > MAX) {
-                                                width *= MAX / height;
-                                                height = MAX;
-                                            }
+                                            if (height > MAX) { width = Math.round(width * MAX / height); height = MAX; }
                                         }
-                                        
+
+                                        const canvas = document.createElement('canvas');
                                         canvas.width = width;
                                         canvas.height = height;
                                         const ctx = canvas.getContext('2d');
                                         ctx.drawImage(img, 0, 0, width, height);
-                                        
-                                        canvas.toBlob((blob) => {
-                                            img.src = '';
-                                            canvas.width = 0;
-                                            canvas.height = 0;
-                                            if (blob) {
+
+                                        // Free the image from memory right after drawing
+                                        img.src = '';
+
+                                        // Step 2: First compression pass — quality 0.7
+                                        canvas.toBlob((blob1) => {
+                                            if (!blob1) {
+                                                canvas.width = 0; canvas.height = 0;
+                                                reject(new Error('Compression pass 1 failed: canvas returned null blob.'));
+                                                return;
+                                            }
+
+                                            const SIZE_LIMIT = 1.8 * 1024 * 1024; // 1.8 MB
+                                            if (blob1.size <= SIZE_LIMIT) {
+                                                // Good — within limit
+                                                canvas.width = 0; canvas.height = 0;
                                                 try {
-                                                    const finalFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpeg", { type: 'image/jpeg' });
-                                                    resolve(finalFile);
-                                                } catch (memErr) {
-                                                    reject(new Error('Out of memory creating file: ' + memErr.message));
-                                                } finally {
-                                                    // Allow blob to be GC'd
-                                                    blob = null;
-                                                }
+                                                    const f = new File([blob1], file.name.replace(/\.[^/.]+$/, '') + '.jpeg', { type: 'image/jpeg' });
+                                                    resolve(f);
+                                                } catch (e) { reject(new Error('File wrap error (pass 1): ' + e.message)); }
+                                                finally { blob1 = null; }
                                             } else {
-                                                reject(new Error('Canvas to Blob failed.'));
+                                                // Step 3: Second pass — lower quality 0.5 to force under limit
+                                                console.warn(`[PlateMate] Pass 1 blob: ${(blob1.size / 1024).toFixed(0)}KB — re-compressing at q=0.5`);
+                                                blob1 = null;
+                                                canvas.toBlob((blob2) => {
+                                                    canvas.width = 0; canvas.height = 0;
+                                                    if (!blob2) {
+                                                        reject(new Error('Compression pass 2 failed: canvas returned null blob.'));
+                                                        return;
+                                                    }
+                                                    console.log(`[PlateMate] Pass 2 blob: ${(blob2.size / 1024).toFixed(0)}KB`);
+                                                    try {
+                                                        const f = new File([blob2], file.name.replace(/\.[^/.]+$/, '') + '.jpeg', { type: 'image/jpeg' });
+                                                        resolve(f);
+                                                    } catch (e) { reject(new Error('File wrap error (pass 2): ' + e.message)); }
+                                                    finally { blob2 = null; }
+                                                }, 'image/jpeg', 0.5);
                                             }
                                         }, 'image/jpeg', 0.7);
                                     };
-                                    img.onerror = () => {
+
+                                    img.onerror = (err) => {
                                         URL.revokeObjectURL(objectUrl);
-                                        reject(new Error('Image failed to load.'));
+                                        reject(new Error('Image load failed: ' + (err?.message || 'unknown error')));
                                     };
                                     img.src = objectUrl;
                                 });
 
+                                console.log(`[PlateMate] Uploading compressed file: ${(compressedFile.size / 1024).toFixed(0)}KB`);
                                 const path = `uploads/${Date.now()}-${compressedFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '')}`;
                                 const { data, error } = await supabaseClient.storage.from('meal-photos').upload(path, compressedFile);
-                                if (error) throw error;
+                                if (error) {
+                                    console.error('[PlateMate] Supabase upload error — full object:', JSON.stringify(error));
+                                    throw error;
+                                }
+
                                 
                                 const { data: urlData } = supabaseClient.storage.from('meal-photos').getPublicUrl(path);
                                 const photoUrl = urlData.publicUrl;
@@ -1037,7 +1073,13 @@ function renderPlanDetails() {
                                 
                             } catch (err) {
                                 console.error('Upload Error:', err);
-                                alert("Upload failed.");
+                                const errMsg = (err.message || '').toLowerCase();
+                                const errStatus = String(err.statusCode || err.status || err.code || '').toLowerCase();
+                                if (errMsg.includes('quota') || errMsg.includes('payload too large') || errMsg.includes('entity too large') || errStatus === '413' || errStatus === '403') {
+                                    alert("⚠️ Cloud storage is full. Please delete old photos from history to free up space.");
+                                } else {
+                                    alert("Upload failed. Please try again.");
+                                }
                                 if (activeBtnIcon) {
                                     activeBtnIcon.innerHTML = origHTML;
                                     activeBtnIcon.style.pointerEvents = 'auto';
