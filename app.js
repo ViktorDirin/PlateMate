@@ -82,6 +82,8 @@ const defaultData = [
 
 // Core categories for inside a plan
 const STANDARD_CATEGORIES = ["Breakfast", "Lunch", "Dinner 1", "Dinner 2"];
+// Canonical display order for meal categories
+const MEAL_ORDER = ["Breakfast", "Lunch", "Dinner", "Dinner 1", "Dinner 2"];
 
 // Supabase Configuration
 const supabaseUrl = "https://jmdmnrhcuwgaaxwdilzj.supabase.co";
@@ -170,6 +172,11 @@ const copyShoppingBtn = document.getElementById('copy-shopping-btn');
 const themeToggleBtn = document.getElementById('theme-toggle');
 
 let currentlyViewingDate = null;
+const timeEditorModal = document.getElementById('time-editor-modal');
+const timeEditorInput = document.getElementById('time-editor-input');
+const timeEditorError = document.getElementById('time-editor-error');
+const timeEditorCancel = document.getElementById('time-editor-cancel');
+const timeEditorSave = document.getElementById('time-editor-save');
 
 const extraSnacksList = document.getElementById('extra-snacks-list');
 const snackNameInput = document.getElementById('snack-name-input');
@@ -184,8 +191,9 @@ function renderExtraSnacks(snacks) {
     }
     let html = '';
     snacks.forEach((snack, idx) => {
+        const timeHtml = `<span class="edit-snack-time-btn" data-index="${idx}" style="color: var(--primary-blue); font-size: 0.85em; font-weight: 600; cursor: pointer; margin-left: 4px;">[${snack.time || '--:--'}]</span>`;
         html += `<div style="display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--gray-light); margin-bottom: 6px;">
-            <span style="color: #333;"><strong>${snack.name}</strong> (${snack.amount})</span>
+            <span style="color: #333;"><strong>${snack.name}</strong> (${snack.amount})${timeHtml}</span>
             <button class="icon-btn remove-snack-btn" data-index="${idx}" style="color: #dc3545; padding: 4px; border: none; background: none; cursor: pointer;">
                 <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
@@ -201,7 +209,49 @@ function renderExtraSnacks(snacks) {
                 plan.schedule[currentlyViewingDate].extraSnacks.splice(index, 1);
                 saveData();
                 renderExtraSnacks(plan.schedule[currentlyViewingDate].extraSnacks);
+                if (document.getElementById('history-screen').classList.contains('active')) {
+                    renderHistoryScreen();
+                }
             }
+        });
+    });
+
+    extraSnacksList.querySelectorAll('.edit-snack-time-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const index = parseInt(e.currentTarget.getAttribute('data-index'));
+            const plan = plans.find(p => p.id === currentPlanId);
+            if (!plan || !currentlyViewingDate || !plan.schedule[currentlyViewingDate]) return;
+            
+            const snack = plan.schedule[currentlyViewingDate].extraSnacks[index];
+            if (!snack) return;
+
+            timeEditorInput.value = snack.time || '';
+            timeEditorError.textContent = '';
+            timeEditorSave.onclick = () => {
+                let val = timeEditorInput.value.trim();
+                const regex = /^([01]\d|2[0-3]):?([0-5]\d)$/;
+                const match = val.match(regex);
+                
+                if (val !== '' && !match) return;
+
+                if (match) {
+                    const hh = match[1];
+                    const mm = match[2];
+                    val = `${hh}:${mm}`;
+                } else {
+                    val = null;
+                }
+
+                snack.time = val;
+                saveData();
+                timeEditorModal.classList.remove('active');
+                renderExtraSnacks(plan.schedule[currentlyViewingDate].extraSnacks);
+                if (document.getElementById('history-screen').classList.contains('active')) {
+                    renderHistoryScreen();
+                }
+            };
+            timeEditorModal.classList.add('active');
+            timeEditorInput.focus();
         });
     });
 }
@@ -624,299 +674,7 @@ function renderPlanDetails() {
             `;
 
             dateItem.querySelector('.saved-date-label').addEventListener('click', () => {
-                // View specific saved menu directly
-                currentlyViewingDate = date;
-                dailyMenuTitle.textContent = `Menu for ${dateString}`;
-
-                if (!plan.schedule[date].extraSnacks) plan.schedule[date].extraSnacks = [];
-                renderExtraSnacks(plan.schedule[date].extraSnacks);
-
-                let menuHtml = '';
-                Object.keys(plan.categories).forEach(cat => {
-                    const sel = plan.schedule[date][cat];
-                    const selId = typeof sel === 'object' ? sel.id : sel;
-                    const isDone = typeof sel === 'object' && sel.done ? true : false;
-                    
-                    if (selId && plan.categories[cat]) {
-                        const variant = plan.categories[cat].find(v => v.id === selId);
-                        if (variant) {
-                            const doneStyle = isDone ? 'text-decoration: line-through; opacity: 0.6;' : '';
-                            const checkedAttr = isDone ? 'checked' : '';
-                            const photoUrl = typeof sel === 'object' && sel.photoUrl ? sel.photoUrl : null;
-                            
-                            let photoHtml = '';
-                            if (photoUrl) {
-                                photoHtml = `
-                                    <div style="margin-top: 8px; position: relative; display: inline-block;">
-                                        <img src="${photoUrl}" style="max-width: 100px; max-height: 100px; border-radius: 8px; border: 1px solid var(--gray-light);" />
-                                        <button class="icon-btn delete-photo-btn" data-cat="${cat}" style="position: absolute; top: -8px; right: -8px; background: #dc3545; color: white; border-radius: 50%; padding: 4px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                                <line x1="6" y1="6" x2="18" y2="18"></line>
-                                            </svg>
-                                        </button>
-                                    </div>
-                                `;
-                            }
-
-                            menuHtml += `
-                                <div style="margin-bottom: 12px; display: flex; align-items: flex-start; gap: 12px; ${doneStyle}">
-                                    <input type="checkbox" class="meal-completed-checkbox" data-cat="${cat}" style="transform: scale(1.3); margin-top: 4px; flex: 0 0 20px;" ${checkedAttr}>
-                                    <div style="flex-grow: 1;">
-                                        <strong>${cat}:</strong><br/> ${variant.text}
-                                        ${photoHtml}
-                                    </div>
-                                    <button class="icon-btn photo-btn" data-cat="${cat}" style="color: var(--primary-blue); padding: 4px; margin-top: -2px;">
-                                        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                                            <circle cx="12" cy="13" r="4"></circle>
-                                        </svg>
-                                    </button>
-                                </div>`;
-                        }
-                    }
-                });
-                if (!menuHtml) menuHtml = '<p>No meals planned for this date.</p>';
-
-                dailyMenuContent.innerHTML = menuHtml;
-                
-                // Add event listeners for toggling meal completion
-                dailyMenuContent.querySelectorAll('.meal-completed-checkbox').forEach(cb => {
-                    cb.addEventListener('change', (e) => {
-                        const cat = e.target.getAttribute('data-cat');
-                        const isChecked = e.target.checked;
-                        
-                        const sel = plan.schedule[currentlyViewingDate][cat];
-                        const selId = typeof sel === 'object' ? sel.id : sel;
-                        const photoUrl = typeof sel === 'object' && sel.photoUrl ? sel.photoUrl : null;
-                        
-                        plan.schedule[currentlyViewingDate][cat] = {
-                            id: selId,
-                            done: isChecked,
-                            photoUrl: photoUrl
-                        };
-                        saveData();
-                        
-                        // Update visual presentation directly (strikethrough)
-                        const container = e.target.parentElement;
-                        if (isChecked) {
-                            container.style.textDecoration = 'line-through';
-                            container.style.opacity = '0.6';
-                        } else {
-                            container.style.textDecoration = 'none';
-                            container.style.opacity = '1';
-                        }
-                    });
-                });
-
-                // Add event listeners for photo upload
-                dailyMenuContent.querySelectorAll('.photo-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        const cat = e.currentTarget.getAttribute('data-cat');
-                        const fileInput = document.getElementById('meal-photo-input');
-                        if (!fileInput) return;
-                        
-                        // Safely capture the current target synchronously
-                        const activeBtnIcon = e.currentTarget;
-                        const origHTML = activeBtnIcon ? activeBtnIcon.innerHTML : '';
-                        
-                        // Reset input first
-                        fileInput.value = '';
-                        fileInput.onchange = async (event) => {
-                            const file = event.target.files[0];
-                            if (!file) return;
-                            
-                            let mealCardContainer = null;
-                            let overlayDiv = null;
-
-                            if (activeBtnIcon) {
-                                activeBtnIcon.style.pointerEvents = 'none';
-                                activeBtnIcon.innerHTML = `<span style="font-size:12px;">...</span>`;
-                                mealCardContainer = activeBtnIcon.closest('div[style*="margin-bottom: 12px"]');
-                                if (mealCardContainer) {
-                                    mealCardContainer.style.position = 'relative';
-                                    overlayDiv = document.createElement('div');
-                                    overlayDiv.style.position = 'absolute';
-                                    overlayDiv.style.top = '0';
-                                    overlayDiv.style.left = '0';
-                                    overlayDiv.style.width = '100%';
-                                    overlayDiv.style.height = '100%';
-                                    overlayDiv.style.background = 'rgba(255,255,255,0.7)';
-                                    overlayDiv.style.display = 'flex';
-                                    overlayDiv.style.alignItems = 'center';
-                                    overlayDiv.style.justifyContent = 'center';
-                                    overlayDiv.style.fontWeight = 'bold';
-                                    overlayDiv.style.zIndex = '10';
-                                    overlayDiv.style.borderRadius = '8px';
-                                    overlayDiv.innerHTML = '<span>⏳ Uploading...</span>';
-                                    mealCardContainer.appendChild(overlayDiv);
-                                }
-                            } else {
-                                console.log("Uploading photo for", cat);
-                            }
-                            
-                            try {
-                                const compressedFile = await new Promise((resolve, reject) => {
-                                    const reader = new FileReader();
-                                    reader.onload = (e) => {
-                                        const img = new Image();
-                                        img.onload = () => {
-                                            const canvas = document.createElement('canvas');
-                                            let width = img.width;
-                                            let height = img.height;
-                                            const MAX = 1200;
-                                            
-                                            if (width > height) {
-                                                if (width > MAX) {
-                                                    height *= MAX / width;
-                                                    width = MAX;
-                                                }
-                                            } else {
-                                                if (height > MAX) {
-                                                    width *= MAX / height;
-                                                    height = MAX;
-                                                }
-                                            }
-                                            
-                                            canvas.width = width;
-                                            canvas.height = height;
-                                            const ctx = canvas.getContext('2d');
-                                            ctx.drawImage(img, 0, 0, width, height);
-                                            
-                                            canvas.toBlob((blob) => {
-                                                if (blob) {
-                                                    const finalFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpeg", { type: 'image/jpeg' });
-                                                    resolve(finalFile);
-                                                } else {
-                                                    reject(new Error('Canvas to Blob failed.'));
-                                                }
-                                            }, 'image/jpeg', 0.7);
-                                        };
-                                        img.onerror = () => reject(new Error('Image failed to load.'));
-                                        img.src = e.target.result;
-                                    };
-                                    reader.onerror = () => reject(new Error('File reader failed.'));
-                                    reader.readAsDataURL(file);
-                                });
-
-                                const path = `uploads/${Date.now()}-${compressedFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '')}`;
-                                const { data, error } = await supabaseClient.storage.from('meal-photos').upload(path, compressedFile);
-                                if (error) throw error;
-                                
-                                const { data: urlData } = supabaseClient.storage.from('meal-photos').getPublicUrl(path);
-                                const photoUrl = urlData.publicUrl;
-                                
-                                const sel = plan.schedule[currentlyViewingDate][cat];
-                                const selId = typeof sel === 'object' ? sel.id : sel;
-                                const isDone = typeof sel === 'object' ? sel.done : false;
-                                
-                                plan.schedule[currentlyViewingDate][cat] = {
-                                    id: selId,
-                                    done: isDone,
-                                    photoUrl: photoUrl
-                                };
-                                await saveData();
-                                
-                                // Direct DOM update after save
-                                if (activeBtnIcon) {
-                                    const textDiv = activeBtnIcon.previousElementSibling;
-                                    if (textDiv && !textDiv.querySelector('img')) {
-                                        const photoHtml = `
-                                            <div style="margin-top: 8px; position: relative; display: inline-block;">
-                                                <img src="${photoUrl}" style="max-width: 100px; max-height: 100px; border-radius: 8px; border: 1px solid var(--gray-light);" />
-                                                <button class="icon-btn delete-photo-btn" data-cat="${cat}" style="position: absolute; top: -8px; right: -8px; background: #dc3545; color: white; border-radius: 50%; padding: 4px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                                                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                                                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                                                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                        `;
-                                        textDiv.innerHTML += photoHtml;
-                                        
-                                        const newDelBtn = textDiv.querySelector('.delete-photo-btn');
-                                        if (newDelBtn) {
-                                            newDelBtn.addEventListener('click', async (eDel) => {
-                                                eDel.stopPropagation();
-                                                const confirmed = await showConfirm("Remove this photo?");
-                                                if (!confirmed) return;
-                                                
-                                                const selObj = plan.schedule[currentlyViewingDate][cat];
-                                                if (selObj && typeof selObj === 'object' && selObj.photoUrl) {
-                                                    const urlParts = selObj.photoUrl.split('/meal-photos/');
-                                                    if (urlParts.length > 1) {
-                                                        const delPath = urlParts[1];
-                                                        supabaseClient.storage.from('meal-photos').remove([delPath]).catch(console.error);
-                                                    }
-                                                    delete selObj.photoUrl;
-                                                    await saveData();
-                                                    newDelBtn.parentElement.remove();
-                                                    
-                                                    // Sync history screen visually if it is active
-                                                    if (document.getElementById('history-screen').classList.contains('active')) {
-                                                        renderHistoryScreen();
-                                                    }
-                                                }
-                                            });
-                                        }
-                                    }
-                                }
-                                
-                                if (activeBtnIcon) {
-                                    activeBtnIcon.innerHTML = origHTML;
-                                    activeBtnIcon.style.pointerEvents = 'auto';
-                                } else {
-                                    console.log("Upload complete.");
-                                }
-                                if (overlayDiv && overlayDiv.parentNode) {
-                                    overlayDiv.parentNode.removeChild(overlayDiv);
-                                }
-                                
-                                // Sync history screen visually if it is active
-                                if (document.getElementById('history-screen').classList.contains('active')) {
-                                    renderHistoryScreen();
-                                }
-                                
-                            } catch (err) {
-                                console.error('Upload Error:', err);
-                                alert("Upload failed.");
-                                if (activeBtnIcon) {
-                                    activeBtnIcon.innerHTML = origHTML;
-                                    activeBtnIcon.style.pointerEvents = 'auto';
-                                }
-                                if (overlayDiv && overlayDiv.parentNode) {
-                                    overlayDiv.parentNode.removeChild(overlayDiv);
-                                }
-                            }
-                        };
-                        fileInput.click();
-                    });
-                });
-
-                // Add event listeners for photo deletion
-                dailyMenuContent.querySelectorAll('.delete-photo-btn').forEach(btn => {
-                    btn.addEventListener('click', async (e) => {
-                        e.stopPropagation();
-                        const confirmed = await showConfirm("Remove this photo?");
-                        if (!confirmed) return;
-                        
-                        const cat = e.currentTarget.getAttribute('data-cat');
-                        const sel = plan.schedule[currentlyViewingDate][cat];
-                        
-                        if (sel && typeof sel === 'object' && sel.photoUrl) {
-                            const urlParts = sel.photoUrl.split('/meal-photos/');
-                            if (urlParts.length > 1) {
-                                const path = urlParts[1];
-                                supabaseClient.storage.from('meal-photos').remove([path]).catch(console.error);
-                            }
-                            delete sel.photoUrl;
-                            await saveData();
-                            e.currentTarget.parentElement.remove(); // Direct DOM update
-                        }
-                    });
-                });
-
-                dailyMenuModal.classList.add('active');
+                openDailyMenuForDate(date);
             });
 
             dateItem.querySelector('.delete-date-btn').addEventListener('click', () => {
@@ -1426,11 +1184,27 @@ function setupEventListeners() {
                         const existingId = (existingSel && typeof existingSel === 'object') ? existingSel.id : existingSel;
                         const existingDone = (existingSel && typeof existingSel === 'object') ? existingSel.done : false;
                         const existingPhotoUrl = (existingSel && typeof existingSel === 'object') ? existingSel.photoUrl : null;
-                        
+                        const existingCompletionTime = (existingSel && typeof existingSel === 'object') ? (existingSel.completionTime || null) : null;
+
+                        // --- DATA SNAPSHOT: find the live variant and deep-copy text + ingredients ---
+                        const variantId = tempSelections[cat];
+                        let snapshotText = '';
+                        let snapshotIngredients = [];
+                        if (plan.categories && plan.categories[cat]) {
+                            const liveVariant = plan.categories[cat].find(v => v.id === variantId);
+                            if (liveVariant) {
+                                snapshotText = liveVariant.text || '';
+                                snapshotIngredients = JSON.parse(JSON.stringify(liveVariant.ingredients || []));
+                            }
+                        }
+
                         newSchedule[cat] = {
-                            id: tempSelections[cat],
-                            done: (existingId === tempSelections[cat]) ? existingDone : false,
-                            photoUrl: (existingId === tempSelections[cat]) ? existingPhotoUrl : null
+                            id: variantId,
+                            text: snapshotText,
+                            ingredients: snapshotIngredients,
+                            done: (existingId === variantId) ? existingDone : false,
+                            photoUrl: (existingId === variantId) ? existingPhotoUrl : null,
+                            completionTime: (existingId === variantId) ? existingCompletionTime : null
                         };
                     });
                     
@@ -1466,7 +1240,13 @@ function setupEventListeners() {
             if (!plan.schedule[currentlyViewingDate].extraSnacks) {
                 plan.schedule[currentlyViewingDate].extraSnacks = [];
             }
-            plan.schedule[currentlyViewingDate].extraSnacks.push({ name, amount: amount || '1 serving' });
+            const now = new Date();
+            const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+            plan.schedule[currentlyViewingDate].extraSnacks.push({ 
+                name, 
+                amount: amount || '1 serving',
+                time: timeStr
+            });
             
             saveData();
             
@@ -1485,21 +1265,28 @@ function setupEventListeners() {
             const selections = plan.schedule[currentlyViewingDate];
             const shoppingMap = {};
 
-            Object.keys(plan.categories).forEach(cat => {
+            // Gather all category keys from the schedule record (snapshot-aware)
+            const shoppingCatKeys = new Set([
+                ...Object.keys(selections).filter(k => k !== 'extraSnacks'),
+                ...Object.keys(plan.categories)
+            ]);
+            shoppingCatKeys.forEach(cat => {
                 const sel = selections[cat];
+                if (!sel) return;
                 const selId = typeof sel === 'object' ? sel.id : sel;
-                if (selId && plan.categories[cat]) {
-                    const variant = plan.categories[cat].find(v => v.id === selId);
-                    if (variant && variant.ingredients) {
-                        variant.ingredients.forEach(ing => {
-                            const key = `${ing.n}_${ing.u}`;
-                            if (!shoppingMap[key]) {
-                                shoppingMap[key] = { n: ing.n, a: 0, u: ing.u };
-                            }
-                            shoppingMap[key].a += ing.a;
-                        });
+                if (!selId) return;
+
+                // --- SNAPSHOT PRIORITY: use ingredients stored in the record ---
+                const ingredients = (typeof sel === 'object' && sel.ingredients && sel.ingredients.length > 0) ? sel.ingredients
+                    : (() => { const v = plan.categories[cat] && plan.categories[cat].find(v => v.id === selId); return v ? (v.ingredients || []) : []; })();
+
+                ingredients.forEach(ing => {
+                    const key = `${ing.n}_${ing.u}`;
+                    if (!shoppingMap[key]) {
+                        shoppingMap[key] = { n: ing.n, a: 0, u: ing.u };
                     }
-                }
+                    shoppingMap[key].a += ing.a;
+                });
             });
 
             let listHtml = '';
@@ -1533,6 +1320,285 @@ function setupEventListeners() {
             });
         });
     }
+
+    // Time Editor Modal Events
+    if (timeEditorCancel) {
+        timeEditorCancel.addEventListener('click', () => {
+            timeEditorModal.classList.remove('active');
+        });
+    }
+
+    if (timeEditorInput) {
+        timeEditorInput.addEventListener('input', () => {
+            let val = timeEditorInput.value.trim();
+            
+            // Auto-format 4 digits into HH:mm
+            let digitsOnly = val.replace(/\D/g, '');
+            if (digitsOnly.length === 4 && !val.includes(':')) {
+                const hh = digitsOnly.slice(0, 2);
+                const mm = digitsOnly.slice(2, 4);
+                timeEditorInput.value = `${hh}:${mm}`;
+                val = timeEditorInput.value;
+            }
+
+            const regex = /^([01]\d|2[0-3]):?([0-5]\d)$/;
+            if (val === '' || regex.test(val)) {
+                timeEditorError.textContent = '';
+                timeEditorSave.disabled = false;
+            } else {
+                timeEditorError.textContent = 'Invalid format. Use HH:mm or 4 digits.';
+                timeEditorSave.disabled = true;
+            }
+        });
+    }
+
+    timeEditorModal.addEventListener('click', (e) => {
+        if (e.target === timeEditorModal) timeEditorModal.classList.remove('active');
+    });
+}
+
+function openDailyMenuForDate(date) {
+    const plan = plans.find(p => p.id === currentPlanId);
+    if (!plan || !plan.schedule[date]) return;
+
+    currentlyViewingDate = date;
+    
+    let dateString = date;
+    try {
+        const [y, m, d] = date.split('-');
+        const dateObj = new Date(y, m - 1, d);
+        dateString = dateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    } catch (e) {}
+    
+    dailyMenuTitle.textContent = `Menu for ${dateString}`;
+
+    if (!plan.schedule[date].extraSnacks) plan.schedule[date].extraSnacks = [];
+    renderExtraSnacks(plan.schedule[date].extraSnacks);
+
+    let menuHtml = '';
+    const menuCatKeys = new Set([
+        ...Object.keys(plan.schedule[date]).filter(k => k !== 'extraSnacks'),
+        ...Object.keys(plan.categories)
+    ]);
+    const sortedMenuCats = [...menuCatKeys].sort((a, b) => {
+        const ai = MEAL_ORDER.indexOf(a);
+        const bi = MEAL_ORDER.indexOf(b);
+        if (ai !== -1 && bi !== -1) return ai - bi;
+        if (ai !== -1) return -1;
+        if (bi !== -1) return 1;
+        return a.localeCompare(b);
+    });
+
+    sortedMenuCats.forEach(cat => {
+        const sel = plan.schedule[date][cat];
+        if (!sel) return;
+        const selId = typeof sel === 'object' ? sel.id : sel;
+        const isDone = typeof sel === 'object' && sel.done ? true : false;
+        const displayText = (typeof sel === 'object' && sel.text) ? sel.text
+            : (() => { const v = plan.categories[cat] && plan.categories[cat].find(v => v.id === selId); return v ? v.text : null; })();
+
+        if (selId && displayText) {
+            const doneStyle = isDone ? 'text-decoration: line-through; opacity: 0.6;' : '';
+            const checkedAttr = isDone ? 'checked' : '';
+            const photoUrl = typeof sel === 'object' && sel.photoUrl ? sel.photoUrl : null;
+            const completionTime = (typeof sel === 'object' && sel.completionTime) ? sel.completionTime : null;
+
+            const timeBadgeHtml = isDone
+                ? `<span class="edit-time-btn" data-cat="${cat}" style="color: var(--primary-blue); font-size: 0.85em; font-weight: 600; cursor: pointer; margin-left: 4px;">[${completionTime || '--:--'}]</span>`
+                : '';
+
+            let photoHtml = '';
+            if (photoUrl) {
+                photoHtml = `
+                    <div style="margin-top: 8px; position: relative; display: inline-block;">
+                        <img src="${photoUrl}" style="max-width: 100px; max-height: 100px; border-radius: 8px; border: 1px solid var(--gray-light);" />
+                        <button class="icon-btn delete-photo-btn" data-cat="${cat}" style="position: absolute; top: -8px; right: -8px; background: #dc3545; color: white; border-radius: 50%; padding: 4px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        </button>
+                    </div>
+                `;
+            }
+
+            menuHtml += `
+                <div style="margin-bottom: 12px; display: flex; align-items: flex-start; gap: 12px; ${doneStyle}">
+                    <input type="checkbox" class="meal-completed-checkbox" data-cat="${cat}" style="transform: scale(1.3); margin-top: 4px; flex: 0 0 20px;" ${checkedAttr}>
+                    <div style="flex-grow: 1;">
+                        <strong>${cat}:</strong> ${timeBadgeHtml}<br/> ${displayText}
+                        ${photoHtml}
+                    </div>
+                    <button class="icon-btn photo-btn" data-cat="${cat}" style="color: var(--primary-blue); padding: 4px; margin-top: -2px;">
+                        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                            <circle cx="12" cy="13" r="4"></circle>
+                        </svg>
+                    </button>
+                </div>`;
+        }
+    });
+
+    if (!menuHtml) menuHtml = '<p>No meals planned for this date.</p>';
+    dailyMenuContent.innerHTML = menuHtml;
+
+    // Listeners
+    dailyMenuContent.querySelectorAll('.meal-completed-checkbox').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+            const cat = e.target.getAttribute('data-cat');
+            const isChecked = e.target.checked;
+            const sel = plan.schedule[date][cat];
+            const selId = typeof sel === 'object' ? sel.id : sel;
+            
+            let completionTime = (sel && typeof sel === 'object' && sel.completionTime) ? sel.completionTime : null;
+            if (isChecked && !completionTime) {
+                const now = new Date();
+                completionTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+            } else if (!isChecked) {
+                completionTime = null;
+            }
+
+            saveData();
+            openDailyMenuForDate(date); // Re-render instantly
+            if (document.getElementById('history-screen').classList.contains('active')) {
+                renderHistoryScreen();
+            }
+        });
+    });
+
+    dailyMenuContent.addEventListener('click', (e) => {
+        const btn = e.target.closest('.edit-time-btn');
+        if (btn) {
+            const cat = btn.getAttribute('data-cat');
+            const sel = plan.schedule[date][cat];
+            if (!sel || typeof sel !== 'object') return;
+            
+            timeEditorInput.value = sel.completionTime || '';
+            timeEditorError.textContent = '';
+            timeEditorSave.onclick = () => {
+                let val = timeEditorInput.value.trim();
+                const regex = /^([01]\d|2[0-3]):?([0-5]\d)$/;
+                const match = val.match(regex);
+                
+                if (val !== '' && !match) return;
+
+                // Ensure it's in HH:mm format for storage
+                if (match) {
+                    const hh = match[1];
+                    const mm = match[2];
+                    val = `${hh}:${mm}`;
+                } else {
+                    val = null;
+                }
+
+                sel.completionTime = val;
+                saveData();
+                timeEditorModal.classList.remove('active');
+                openDailyMenuForDate(date); // Re-render instantly
+                if (document.getElementById('history-screen').classList.contains('active')) {
+                    renderHistoryScreen();
+                }
+            };
+            timeEditorModal.classList.add('active');
+            timeEditorInput.focus();
+        }
+        
+        // Photo and other buttons...
+        const photoBtn = e.target.closest('.photo-btn');
+        if (photoBtn) handlePhotoUpload(photoBtn, plan, date);
+
+        const deletePhotoBtn = e.target.closest('.delete-photo-btn');
+        if (deletePhotoBtn) handleDeletePhoto(deletePhotoBtn, plan, date);
+    });
+
+    dailyMenuModal.classList.add('active');
+}
+
+async function handlePhotoUpload(btn, plan, date) {
+    const cat = btn.getAttribute('data-cat');
+    const fileInput = document.getElementById('meal-photo-input');
+    if (!fileInput) return;
+    
+    const origHTML = btn.innerHTML;
+    fileInput.value = '';
+    fileInput.onchange = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        btn.style.pointerEvents = 'none';
+        btn.innerHTML = `<span style="font-size:12px;">...</span>`;
+        
+        try {
+            const compressedFile = await compressImage(file);
+            const path = `uploads/${Date.now()}-${compressedFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '')}`;
+            const { data, error } = await supabaseClient.storage.from('meal-photos').upload(path, compressedFile);
+            if (error) throw error;
+            
+            const { data: urlData } = supabaseClient.storage.from('meal-photos').getPublicUrl(path);
+            const photoUrl = urlData.publicUrl;
+            
+            const sel = plan.schedule[date][cat];
+            plan.schedule[date][cat] = {
+                ...(typeof sel === 'object' ? sel : { id: sel }),
+                photoUrl: photoUrl
+            };
+            await saveData();
+            openDailyMenuForDate(date);
+        } catch (err) {
+            console.error('Upload Error:', err);
+            alert("Upload failed.");
+        } finally {
+            btn.innerHTML = origHTML;
+            btn.style.pointerEvents = 'auto';
+        }
+    };
+    fileInput.click();
+}
+
+async function handleDeletePhoto(btn, plan, date) {
+    const confirmed = await showConfirm("Remove this photo?");
+    if (!confirmed) return;
+    
+    const cat = btn.getAttribute('data-cat');
+    const sel = plan.schedule[date][cat];
+    if (sel && typeof sel === 'object' && sel.photoUrl) {
+        const urlParts = sel.photoUrl.split('/meal-photos/');
+        if (urlParts.length > 1) {
+            const path = urlParts[1];
+            supabaseClient.storage.from('meal-photos').remove([path]).catch(console.error);
+        }
+        delete sel.photoUrl;
+        await saveData();
+        openDailyMenuForDate(date);
+        if (document.getElementById('history-screen').classList.contains('active')) {
+            renderHistoryScreen();
+        }
+    }
+}
+
+async function compressImage(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                const MAX = 1200;
+                if (width > height) { if (width > MAX) { height *= MAX / width; width = MAX; } }
+                else { if (height > MAX) { width *= MAX / height; height = MAX; } }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        resolve(new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpeg", { type: 'image/jpeg' }));
+                    } else { reject(new Error('Canvas failed')); }
+                }, 'image/jpeg', 0.7);
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
 }
 
 // History Screen logic
@@ -1602,48 +1668,69 @@ function renderHistoryScreen() {
         let monthHasVisibleDays = false;
 
         groupedByMonth[monthYear].forEach(date => {
-            let hasCompletedOrPhotos = false;
+            let hasContent = false;
             let reportHtml = '';
             
-            Object.keys(plan.categories).forEach(cat => {
+            // Gather all category keys: from the schedule record itself (snapshot) + library
+            const historyCatKeys = new Set([
+                ...Object.keys(plan.schedule[date]).filter(k => k !== 'extraSnacks'),
+                ...Object.keys(plan.categories)
+            ]);
+            const sortedHistoryCats = [...historyCatKeys].sort((a, b) => {
+                const ai = MEAL_ORDER.indexOf(a);
+                const bi = MEAL_ORDER.indexOf(b);
+                if (ai !== -1 && bi !== -1) return ai - bi;
+                if (ai !== -1) return -1;
+                if (bi !== -1) return 1;
+                return a.localeCompare(b);
+            });
+            sortedHistoryCats.forEach(cat => {
                 const sel = plan.schedule[date][cat];
+                if (!sel) return;
                 const selId = typeof sel === 'object' ? sel.id : sel;
                 const isDone = typeof sel === 'object' && sel.done ? true : false;
                 const photoUrl = typeof sel === 'object' && sel.photoUrl ? sel.photoUrl : null;
-                
-                if (isDone || photoUrl) {
-                    hasCompletedOrPhotos = true;
-                }
-                
-                if (selId && plan.categories[cat]) {
-                    const variant = plan.categories[cat].find(v => v.id === selId);
-                    if (variant) {
-                        const doneText = isDone ? '✅ <span style="color: #28a745;">Done</span>' : '❌ <span style="color: #dc3545;">Missed</span>';
-                        let imgHtml = photoUrl ? `<img src="${photoUrl}" loading="lazy" style="width: 100%; border-radius: 12px; margin-top: 8px; border: 1px solid var(--gray-light);" />` : '';
-                        
-                        let ingredientsHtml = '';
-                        if (variant.ingredients && variant.ingredients.length > 0) {
-                            const ingList = variant.ingredients.map(ing => `• ${ing.n} ${ing.a}${ing.u}`).join(', ');
-                            ingredientsHtml = `<div style="font-size: 0.85em; color: var(--gray); margin-top: 4px; line-height: 1.4;">${ingList}</div>`;
-                        }
 
-                        reportHtml += `
-                            <div style="margin-bottom: 16px;">
-                                <strong>${cat}:</strong> ${variant.text}
-                                ${ingredientsHtml}
-                                <div style="font-size: 0.9em; font-weight: 600; margin-top: 4px;">${doneText}</div>
-                                ${imgHtml}
-                            </div>
-                        `;
+                // --- SNAPSHOT PRIORITY: use text/ingredients stored in the record ---
+                const displayText = (typeof sel === 'object' && sel.text) ? sel.text
+                    : (() => { const v = plan.categories[cat] && plan.categories[cat].find(v => v.id === selId); return v ? v.text : null; })();
+                const displayIngredients = (typeof sel === 'object' && sel.ingredients && sel.ingredients.length > 0) ? sel.ingredients
+                    : (() => { const v = plan.categories[cat] && plan.categories[cat].find(v => v.id === selId); return v ? (v.ingredients || []) : []; })();
+
+                if (selId && displayText) {
+                    hasContent = true;
+                    const completionTime = (typeof sel === 'object' && sel.completionTime) ? sel.completionTime : null;
+                    const timeLabel = isDone && completionTime ? ` <span style="color: var(--primary-blue); font-size: 0.85em; font-weight: 600;">[${completionTime}]</span>` : '';
+                    const doneText = isDone
+                        ? `✅ <span style="color: #28a745;">Done</span>${timeLabel}`
+                        : '❌ <span style="color: #dc3545;">Missed</span>';
+                    let imgHtml = photoUrl ? `<img src="${photoUrl}" loading="lazy" style="width: 100%; border-radius: 12px; margin-top: 8px; border: 1px solid var(--gray-light);" />` : '';
+                    
+                    let ingredientsHtml = '';
+                    if (displayIngredients && displayIngredients.length > 0) {
+                        const ingList = displayIngredients.map(ing => `• ${ing.n} ${ing.a}${ing.u}`).join(', ');
+                        ingredientsHtml = `<div style="font-size: 0.85em; color: var(--gray); margin-top: 4px; line-height: 1.4;">${ingList}</div>`;
                     }
+
+                    reportHtml += `
+                        <div style="margin-bottom: 16px;">
+                            <strong>${cat}:</strong> ${displayText}
+                            ${ingredientsHtml}
+                            <div style="font-size: 0.9em; font-weight: 600; margin-top: 4px;">${doneText}</div>
+                            ${imgHtml}
+                        </div>
+                    `;
                 }
             });
 
             // incorporate Extra Snacks
             const snacks = plan.schedule[date].extraSnacks;
             if (snacks && snacks.length > 0) {
-                hasCompletedOrPhotos = true;
-                let listHtml = snacks.map(s => `• ${s.name} ${s.amount}`).join('<br/>');
+                hasContent = true;
+                let listHtml = snacks.map(s => {
+                    const timeLabel = s.time ? ` <span style="color: var(--primary-blue); font-size: 0.85em; font-weight: 600;">[${s.time}]</span>` : '';
+                    return `• ${s.name} (${s.amount})${timeLabel}`;
+                }).join('<br/>');
                 
                 reportHtml += `
                     <div style="margin-bottom: 16px;">
@@ -1653,8 +1740,8 @@ function renderHistoryScreen() {
                 `;
             }
 
-            if (!hasCompletedOrPhotos) {
-                reportHtml = '<p style="color: var(--gray); font-style: italic; margin-bottom: 0;">Empty day - No meals logged or completed</p>';
+            if (!hasContent) {
+                reportHtml = '<p style="color: var(--gray); font-style: italic; margin-bottom: 0;">Empty day - No meals planned or logged</p>';
             }
 
             monthHasVisibleDays = true;

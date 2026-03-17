@@ -5,7 +5,7 @@
     --card-bg: #ffffff;
 
     /* Primary Colors */
-    --primary-blue: #007bff;
+    --primary-blue: #1976D2;
     --primary-yellow: #ffc107;
     --primary-green: #28a745;
 
@@ -359,8 +359,10 @@ body {
 /* Modal UI */
 .modal {
     display: none;
-    align-items: center;  /* Center vertically */
-    justify-content: center; /* Center horizontally */
+    align-items: center;
+    /* Center vertically */
+    justify-content: center;
+    /* Center horizontally */
     position: fixed;
     top: 0;
     left: 0;

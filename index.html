@@ -332,6 +332,20 @@
         </div>
     </div>
 
+    <!-- Time Editor Modal -->
+    <div id="time-editor-modal" class="modal">
+        <div class="modal-content card" style="max-width: 320px;">
+            <h2 style="margin-top: 0; font-size: 1.25rem;">Set Completion Time</h2>
+            <p style="font-size: 0.9rem; color: var(--gray, #888); margin-bottom: 12px;">Enter time (HH:mm or 4 digits)</p>
+            <input type="text" id="time-editor-input" placeholder="e.g. 18:30 or 1830" inputmode="numeric" style="margin-bottom: 4px; text-align: center; font-size: 1.5rem; letter-spacing: 2px; font-weight: bold;" />
+            <div id="time-editor-error" style="color: #dc3545; font-size: 0.8rem; height: 1.2rem; margin-bottom: 16px; text-align: center;"></div>
+            <div class="modal-actions">
+                <button id="time-editor-cancel" class="btn btn-secondary" style="flex: 1;">Cancel</button>
+                <button id="time-editor-save" class="btn btn-primary" style="flex: 1;">Save</button>
+            </div>
+        </div>
+    </div>
+
     <input type="file" id="meal-photo-input" accept="image/*" capture="environment" style="display: none;">
 
     <div id="photo-lightbox" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10000; background: rgba(0,0,0,0.9); touch-action: none; flex-direction: column; align-items: center; justify-content: center;">
