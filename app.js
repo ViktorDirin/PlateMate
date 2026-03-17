@@ -183,6 +183,12 @@ const snackNameInput = document.getElementById('snack-name-input');
 const snackAmountInput = document.getElementById('snack-amount-input');
 const addSnackBtn = document.getElementById('add-snack-btn');
 
+const mealReplacementModal = document.getElementById('meal-replacement-modal');
+const mealReplacementList = document.getElementById('meal-replacement-list');
+const customMealInput = document.getElementById('custom-meal-input');
+const closeReplacementBtn = document.getElementById('close-replacement-btn');
+const saveReplacementBtn = document.getElementById('save-replacement-btn');
+
 function renderExtraSnacks(snacks) {
     if (!extraSnacksList) return;
     if (!snacks || snacks.length === 0) {
@@ -1355,6 +1361,98 @@ function setupEventListeners() {
     timeEditorModal.addEventListener('click', (e) => {
         if (e.target === timeEditorModal) timeEditorModal.classList.remove('active');
     });
+
+    if (closeReplacementBtn) {
+        closeReplacementBtn.addEventListener('click', () => {
+            mealReplacementModal.classList.remove('active');
+        });
+    }
+
+    mealReplacementModal.addEventListener('click', (e) => {
+        if (e.target === mealReplacementModal) mealReplacementModal.classList.remove('active');
+    });
+}
+
+function openMealReplacement(cat, date, plan) {
+    if (!plan || !plan.categories[cat]) return;
+    
+    mealReplacementList.innerHTML = '';
+    
+    const currentSel = plan.schedule[date][cat];
+    const currentText = (currentSel && typeof currentSel === 'object') ? (currentSel.text || '') : '';
+    const currentId = (currentSel && typeof currentSel === 'object') ? currentSel.id : currentSel;
+
+    customMealInput.value = currentText;
+    let selectedId = null;
+
+    plan.categories[cat].forEach(variant => {
+        const item = document.createElement('div');
+        item.style.padding = '12px';
+        item.style.borderBottom = '1px solid var(--gray-light)';
+        item.style.cursor = 'pointer';
+        item.style.display = 'flex';
+        item.style.alignItems = 'center';
+        item.style.gap = '10px';
+        item.style.background = variant.id === currentId ? 'var(--gray-light)' : 'transparent';
+        
+        item.innerHTML = `
+            <div style="flex-grow: 1;">
+                <div style="font-weight: 600;">${variant.text}</div>
+                <div style="font-size: 0.8rem; color: var(--gray);">${(variant.ingredients || []).map(i => i.n).join(', ')}</div>
+            </div>
+            ${variant.id === currentId ? '✅' : ''}
+        `;
+        
+        item.onclick = () => {
+            Array.from(mealReplacementList.children).forEach(c => c.style.background = 'transparent');
+            item.style.background = 'var(--gray-light)';
+            selectedId = variant.id;
+            customMealInput.value = ''; // clear custom if pick variant
+        };
+        
+        mealReplacementList.appendChild(item);
+    });
+
+    saveReplacementBtn.onclick = () => {
+        const customText = customMealInput.value.trim();
+        let newSel = null;
+
+        if (customText) {
+            // Create a custom one-time snapshot
+            newSel = {
+                id: 'custom_' + Date.now(),
+                text: customText,
+                ingredients: [],
+                done: false,
+                photoUrl: null,
+                completionTime: null
+            };
+        } else if (selectedId) {
+            const variant = plan.categories[cat].find(v => v.id === selectedId);
+            if (variant) {
+                newSel = {
+                    id: variant.id,
+                    text: variant.text,
+                    ingredients: JSON.parse(JSON.stringify(variant.ingredients || [])),
+                    done: false,
+                    photoUrl: null,
+                    completionTime: null
+                };
+            }
+        }
+
+        if (newSel) {
+            plan.schedule[date][cat] = newSel;
+            saveData();
+            mealReplacementModal.classList.remove('active');
+            openDailyMenuForDate(date);
+            if (document.getElementById('history-screen').classList.contains('active')) {
+                renderHistoryScreen();
+            }
+        }
+    };
+
+    mealReplacementModal.classList.add('active');
 }
 
 function openDailyMenuForDate(date) {
@@ -1426,12 +1524,20 @@ function openDailyMenuForDate(date) {
                         <strong>${cat}:</strong> ${timeBadgeHtml}<br/> ${displayText}
                         ${photoHtml}
                     </div>
-                    <button class="icon-btn photo-btn" data-cat="${cat}" style="color: var(--primary-blue); padding: 4px; margin-top: -2px;">
-                        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                            <circle cx="12" cy="13" r="4"></circle>
-                        </svg>
-                    </button>
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: -2px;">
+                        <button class="icon-btn photo-btn" data-cat="${cat}" style="color: var(--primary-blue); padding: 4px;">
+                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                <circle cx="12" cy="13" r="4"></circle>
+                            </svg>
+                        </button>
+                        <button class="icon-btn replace-meal-btn" data-cat="${cat}" style="color: var(--primary-blue); padding: 4px;" title="Change Meal">
+                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                            </svg>
+                        </button>
+                    </div>
                 </div>`;
         }
     });
@@ -1453,6 +1559,19 @@ function openDailyMenuForDate(date) {
                 completionTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
             } else if (!isChecked) {
                 completionTime = null;
+            }
+
+            // Update the state
+            if (sel && typeof sel === 'object') {
+                sel.done = isChecked;
+                sel.completionTime = completionTime;
+            } else {
+                // Fallback for primitive IDs (though snapshots should be objects)
+                plan.schedule[date][cat] = {
+                    id: selId,
+                    done: isChecked,
+                    completionTime: completionTime
+                };
             }
 
             saveData();
@@ -1506,6 +1625,12 @@ function openDailyMenuForDate(date) {
 
         const deletePhotoBtn = e.target.closest('.delete-photo-btn');
         if (deletePhotoBtn) handleDeletePhoto(deletePhotoBtn, plan, date);
+
+        const replaceBtn = e.target.closest('.replace-meal-btn');
+        if (replaceBtn) {
+            const cat = replaceBtn.getAttribute('data-cat');
+            openMealReplacement(cat, date, plan);
+        }
     });
 
     dailyMenuModal.classList.add('active');
