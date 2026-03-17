@@ -189,6 +189,9 @@ const customMealInput = document.getElementById('custom-meal-input');
 const closeReplacementBtn = document.getElementById('close-replacement-btn');
 const saveReplacementBtn = document.getElementById('save-replacement-btn');
 
+const copyHistoryBtn = document.getElementById('copy-history-btn');
+const saveHistoryTxtBtn = document.getElementById('save-history-txt-btn');
+
 function renderExtraSnacks(snacks) {
     if (!extraSnacksList) return;
     if (!snacks || snacks.length === 0) {
@@ -1371,6 +1374,115 @@ function setupEventListeners() {
     mealReplacementModal.addEventListener('click', (e) => {
         if (e.target === mealReplacementModal) mealReplacementModal.classList.remove('active');
     });
+
+    const historyList = document.getElementById('history-list');
+    if (historyList) {
+        historyList.addEventListener('click', (e) => {
+            const btn = e.target.closest('.edit-history-meal-btn');
+            if (btn) {
+                const date = btn.getAttribute('data-date');
+                const cat = btn.getAttribute('data-cat');
+                const plan = plans.find(p => p.id === currentPlanId);
+                openMealReplacement(cat, date, plan);
+            }
+        });
+    }
+    if (copyHistoryBtn) {
+        copyHistoryBtn.addEventListener('click', () => {
+            const report = generateHistoryReport();
+            navigator.clipboard.writeText(report).then(() => {
+                const originalText = copyHistoryBtn.textContent;
+                copyHistoryBtn.textContent = "Copied!";
+                setTimeout(() => { copyHistoryBtn.textContent = originalText; }, 2000);
+            });
+        });
+    }
+
+    if (saveHistoryTxtBtn) {
+        saveHistoryTxtBtn.addEventListener('click', () => {
+            const report = generateHistoryReport();
+            const blob = new Blob([report], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'PlateMate_Export.txt';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+    }
+}
+
+function generateHistoryReport() {
+    const plan = plans.find(p => p.id === currentPlanId);
+    if (!plan || !plan.schedule) return "No history to export.";
+
+    const now = Date.now();
+    const pastDates = Object.keys(plan.schedule).filter(date => {
+        const [y, m, d] = date.split('-');
+        const dateObj = new Date(y, m - 1, d);
+        return dateObj.getTime() < now;
+    }).sort((a, b) => new Date(a) - new Date(b));
+
+    let report = `PlateMate Report - ${plan.name}\nGenerated on ${new Date().toLocaleString()}\n\n`;
+
+    pastDates.forEach(date => {
+        const schedule = plan.schedule[date];
+        const mainCatKeys = Object.keys(schedule).filter(k => k !== 'extraSnacks').sort((a, b) => {
+            const ai = MEAL_ORDER.indexOf(a);
+            const bi = MEAL_ORDER.indexOf(b);
+            if (ai !== -1 && bi !== -1) return ai - bi;
+            if (ai !== -1) return -1;
+            if (bi !== -1) return 1;
+            return a.localeCompare(b);
+        });
+
+        let hasContent = false;
+        let blocks = [];
+
+        // Main Meals
+        mainCatKeys.forEach(cat => {
+            const sel = schedule[cat];
+            if (!sel) return;
+            const selId = typeof sel === 'object' ? sel.id : sel;
+            const displayText = (typeof sel === 'object' && sel.text) ? sel.text
+                : (() => { const v = plan.categories[cat] && plan.categories[cat].find(v => v.id === selId); return v ? v.text : null; })();
+            
+            if (displayText) {
+                hasContent = true;
+                const isDone = (typeof sel === 'object' && sel.done);
+                const time = (typeof sel === 'object' && sel.completionTime) ? `[${sel.completionTime}]` : "[--:--]";
+                const status = isDone ? "Done" : "Missed";
+                
+                const ingredients = (typeof sel === 'object' && sel.ingredients && sel.ingredients.length > 0) ? sel.ingredients
+                    : (() => { const v = plan.categories[cat] && plan.categories[cat].find(v => v.id === selId); return v ? (v.ingredients || []) : []; })();
+                
+                let ingStr = '';
+                if (ingredients && ingredients.length > 0) {
+                    const list = ingredients.map(ing => `${ing.n} ${ing.a}${ing.u}`).join(', ');
+                    ingStr = ` (${list})`;
+                }
+                
+                blocks.push(`  ${time} ${cat}: ${displayText}${ingStr} | ${status}`);
+            }
+        });
+
+        // Extra Snacks
+        const snacks = schedule.extraSnacks;
+        if (snacks && snacks.length > 0) {
+            hasContent = true;
+            snacks.forEach(s => {
+                const timeStr = s.time ? `[${s.time}]` : "[--:--]";
+                blocks.push(`  ${timeStr} Snack: ${s.name} (${s.amount}) | Done`);
+            });
+        }
+
+        if (hasContent) {
+            report += `DATE: ${date}\n-------------------\n`;
+            report += blocks.join('\n') + "\n\n";
+        }
+    });
+
+    return report;
 }
 
 function openMealReplacement(cat, date, plan) {
@@ -1407,7 +1519,11 @@ function openMealReplacement(cat, date, plan) {
             Array.from(mealReplacementList.children).forEach(c => c.style.background = 'transparent');
             item.style.background = 'var(--gray-light)';
             selectedId = variant.id;
-            customMealInput.value = ''; // clear custom if pick variant
+            
+            // Pre-fill custom input for easier editing
+            const ingList = (variant.ingredients || []).map(i => i.n).join(', ');
+            customMealInput.value = ingList ? `${variant.text} (${ingList})` : variant.text;
+            customMealInput.focus();
         };
         
         mealReplacementList.appendChild(item);
@@ -1417,15 +1533,19 @@ function openMealReplacement(cat, date, plan) {
         const customText = customMealInput.value.trim();
         let newSel = null;
 
+        const isDone = (currentSel && typeof currentSel === 'object') ? !!currentSel.done : false;
+        const photoUrl = (currentSel && typeof currentSel === 'object') ? currentSel.photoUrl : null;
+        const completionTime = (currentSel && typeof currentSel === 'object') ? currentSel.completionTime : null;
+
         if (customText) {
             // Create a custom one-time snapshot
             newSel = {
                 id: 'custom_' + Date.now(),
                 text: customText,
                 ingredients: [],
-                done: false,
-                photoUrl: null,
-                completionTime: null
+                done: isDone,
+                photoUrl: photoUrl,
+                completionTime: completionTime
             };
         } else if (selectedId) {
             const variant = plan.categories[cat].find(v => v.id === selectedId);
@@ -1434,9 +1554,9 @@ function openMealReplacement(cat, date, plan) {
                     id: variant.id,
                     text: variant.text,
                     ingredients: JSON.parse(JSON.stringify(variant.ingredients || [])),
-                    done: false,
-                    photoUrl: null,
-                    completionTime: null
+                    done: isDone,
+                    photoUrl: photoUrl,
+                    completionTime: completionTime
                 };
             }
         }
@@ -1838,11 +1958,19 @@ function renderHistoryScreen() {
                     }
 
                     reportHtml += `
-                        <div style="margin-bottom: 16px;">
-                            <strong>${cat}:</strong> ${displayText}
-                            ${ingredientsHtml}
-                            <div style="font-size: 0.9em; font-weight: 600; margin-top: 4px;">${doneText}</div>
-                            ${imgHtml}
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+                            <div style="flex-grow: 1;">
+                                <strong>${cat}:</strong> ${displayText}
+                                ${ingredientsHtml}
+                                <div style="font-size: 0.9em; font-weight: 600; margin-top: 4px;">${doneText}</div>
+                                ${imgHtml}
+                            </div>
+                            <button class="icon-btn edit-history-meal-btn" data-date="${date}" data-cat="${cat}" style="color: var(--primary-blue); padding: 4px; margin-top: -2px;">
+                                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                </svg>
+                            </button>
                         </div>
                     `;
                 }
