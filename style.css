@@ -426,3 +426,49 @@ textarea {
     display: block !important;
     pointer-events: none;
 }
+
+/* Star Button */
+#star-plan-btn {
+    transition: transform 0.2s, color 0.2s;
+}
+
+#star-plan-btn.active {
+    color: var(--primary-yellow) !important;
+}
+
+#star-plan-btn.active svg {
+    fill: var(--primary-yellow);
+}
+
+#star-plan-btn:not(.active) {
+    color: var(--gray, #888);
+}
+
+#star-plan-btn:not(.active) svg {
+    fill: none;
+}
+
+/* Meal Time Visibility Enhancement */
+.meal-time {
+    text-decoration: none !important;
+    font-style: normal;
+    color: #4dabf7;
+    font-weight: 600;
+    display: inline-block;
+}
+
+/* Last Meal Timer */
+.last-meal-label {
+    font-size: 0.75rem;
+    color: var(--gray, #888);
+    font-weight: 600;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+}
+
+.last-meal-time {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: #40c057;
+    line-height: 1;
+}

@@ -82,7 +82,12 @@
                         <polyline points="12 19 5 12 12 5"></polyline>
                     </svg>
                 </button>
-                <h1 id="plan-title" style="display: flex; align-items: center; gap: 8px;"><span id="plan-title-text" style="margin-right: 12px;">Plan Name</span> <button id="edit-plan-title-btn" class="icon-btn" aria-label="Edit Plan Name" style="color: var(--primary-blue); padding: 0;"><svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button></h1>
+                <h1 id="plan-title" style="display: flex; align-items: center; gap: 8px; flex-grow: 1;"><span id="plan-title-text" style="margin-right: 12px;">Plan Name</span> <button id="edit-plan-title-btn" class="icon-btn" aria-label="Edit Plan Name" style="color: var(--primary-blue); padding: 0;"><svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button></h1>
+                <button id="star-plan-btn" class="icon-btn" aria-label="Default Diet" style="padding: 8px;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="star-icon">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                    </svg>
+                </button>
             </header>
             <div class="content">
                 <div id="streak-counter-container" style="display: none; justify-content: center; margin-bottom: 24px;">
@@ -93,6 +98,12 @@
                 <div style="margin-bottom: 24px; text-align: center;">
                     <button id="view-history-btn" class="btn btn-secondary" style="width: 100%; margin-bottom: 12px;">📜 View History</button>
                     <button id="guidelines-btn" class="btn btn-secondary" style="width: 100%;">Diet Guidelines</button>
+                </div>
+
+                <!-- Last Meal Timer Panel -->
+                <div id="last-meal-panel" style="margin-bottom: 24px; border: 2px solid var(--primary-blue); border-radius: 12px; background: transparent; padding: 16px; text-align: center; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <span class="last-meal-label">SINCE LAST MEAL</span>
+                    <span id="last-meal-timer" class="last-meal-time">--:--</span>
                 </div>
 
                 <!-- NEW: Date Planning Section -->

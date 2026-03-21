@@ -147,6 +147,7 @@ const addPlanModal = document.getElementById('add-plan-modal');
 const newPlanNameInput = document.getElementById('new-plan-name');
 const cancelPlanBtn = document.getElementById('cancel-plan-btn');
 const savePlanBtn = document.getElementById('save-plan-btn');
+const starPlanBtn = document.getElementById('star-plan-btn');
 
 const guidelinesBtn = document.getElementById('guidelines-btn');
 const guidelinesModal = document.getElementById('guidelines-modal');
@@ -282,7 +283,15 @@ async function init() {
     await loadData();
     await saveData(); // Manual push to align DB
     renderMainScreen();
+
+    const defaultDietId = localStorage.getItem('plateMate_defaultDietId');
+    if (defaultDietId && plans.some(p => p.id === defaultDietId)) {
+        openPlan(defaultDietId);
+    }
     setupRealtime();
+
+    setInterval(updateLastMealTimer, 60000);
+    updateLastMealTimer();
 
     // Check Connection
     supabaseClient.from('diet_plans').select('count', { count: 'exact', head: true })
@@ -542,6 +551,16 @@ function openPlan(id) {
         planTitleEl.textContent = plan.name;
     }
 
+    // Update star button state
+    if (starPlanBtn) {
+        const defaultDietId = localStorage.getItem('plateMate_defaultDietId');
+        if (defaultDietId === currentPlanId) {
+            starPlanBtn.classList.add('active');
+        } else {
+            starPlanBtn.classList.remove('active');
+        }
+    }
+
     // reset date input
     if (planDateInput) {
         const today = new Date().toISOString().split('T')[0]; // Simple local string approx
@@ -620,9 +639,64 @@ function calculateStreak(plan) {
     return streak;
 }
 
+function updateLastMealTimer() {
+    const timerDisplay = document.getElementById('last-meal-timer');
+    if (!timerDisplay) return;
+
+    if (!currentPlanId) {
+        timerDisplay.textContent = '--:--';
+        return;
+    }
+
+    const plan = plans.find(p => p.id === currentPlanId);
+    if (!plan || !plan.schedule) {
+        timerDisplay.textContent = '--:--';
+        return;
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todaysPlan = plan.schedule[todayStr];
+
+    if (!todaysPlan) {
+        timerDisplay.textContent = '--:--';
+        return;
+    }
+
+    const now = new Date();
+    let latestTime = -1;
+
+    Object.keys(todaysPlan).forEach(cat => {
+        if (cat === 'extraSnacks') return;
+        const sel = todaysPlan[cat];
+        if (sel && typeof sel === 'object' && sel.done && sel.completionTime) {
+            const [hh, mm] = sel.completionTime.split(':').map(Number);
+            const mealTimeObj = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0);
+            if (mealTimeObj.getTime() > latestTime) {
+                latestTime = mealTimeObj.getTime();
+            }
+        }
+    });
+
+    if (latestTime === -1) {
+        timerDisplay.textContent = '--:--';
+    } else {
+        const diffMs = now.getTime() - latestTime;
+        if (diffMs < 0) {
+            timerDisplay.textContent = '00:00'; 
+        } else {
+            const diffMins = Math.floor(diffMs / 60000);
+            const hhObj = Math.floor(diffMins / 60);
+            const mmObj = diffMins % 60;
+            timerDisplay.textContent = `${hhObj.toString().padStart(2, '0')}:${mmObj.toString().padStart(2, '0')}`;
+        }
+    }
+}
+
 function renderPlanDetails() {
     const plan = plans.find(p => p.id === currentPlanId);
     if (!plan) return;
+
+    updateLastMealTimer();
 
     // Render Streak Logic
     const streakCounterContainer = document.getElementById('streak-counter-container');
@@ -787,6 +861,22 @@ function renderPlanDetails() {
 
 // Attach standard DOM Event Listeners
 function setupEventListeners() {
+    if (starPlanBtn) {
+        starPlanBtn.addEventListener('click', () => {
+            if (!currentPlanId) return;
+            const defaultDietId = localStorage.getItem('plateMate_defaultDietId');
+            if (defaultDietId === currentPlanId) {
+                // Remove default
+                localStorage.removeItem('plateMate_defaultDietId');
+                starPlanBtn.classList.remove('active');
+            } else {
+                // Set new default
+                localStorage.setItem('plateMate_defaultDietId', currentPlanId);
+                starPlanBtn.classList.add('active');
+            }
+        });
+    }
+
     const mealLibraryHeader = document.getElementById('meal-library-header');
     if (mealLibraryHeader) {
         mealLibraryHeader.addEventListener('click', () => toggleMealLibrary());
@@ -1622,7 +1712,7 @@ function openDailyMenuForDate(date) {
             const completionTime = (typeof sel === 'object' && sel.completionTime) ? sel.completionTime : null;
 
             const timeBadgeHtml = isDone
-                ? `<span class="edit-time-btn" data-cat="${cat}" style="color: var(--primary-blue); font-size: 0.85em; font-weight: 600; cursor: pointer; margin-left: 4px;">[${completionTime || '--:--'}]</span>`
+                ? `<span class="edit-time-btn meal-time" data-cat="${cat}" style="font-size: 0.85em; cursor: pointer; margin-left: 4px;">[${completionTime || '--:--'}]</span>`
                 : '';
 
             let photoHtml = '';
@@ -1696,6 +1786,7 @@ function openDailyMenuForDate(date) {
 
             saveData();
             openDailyMenuForDate(date); // Re-render instantly
+            updateLastMealTimer();
             if (document.getElementById('history-screen').classList.contains('active')) {
                 renderHistoryScreen();
             }
@@ -1731,6 +1822,7 @@ function openDailyMenuForDate(date) {
                 saveData();
                 timeEditorModal.classList.remove('active');
                 openDailyMenuForDate(date); // Re-render instantly
+                updateLastMealTimer();
                 if (document.getElementById('history-screen').classList.contains('active')) {
                     renderHistoryScreen();
                 }
