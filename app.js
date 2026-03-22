@@ -1,3 +1,39 @@
+/*
+ * Audio Focus Fix (Android & iOS)
+ * Prevents unintended AudioContext initialization until a user interaction occurs.
+ */
+(function() {
+    const OriginalAudioContext = window.AudioContext || window.webkitAudioContext;
+    if (OriginalAudioContext) {
+        let interactionReady = false;
+        
+        const unlock = () => {
+            interactionReady = true;
+            ['touchstart', 'touchend', 'click', 'keydown'].forEach(e => 
+                document.removeEventListener(e, unlock, true)
+            );
+        };
+        
+        ['touchstart', 'touchend', 'click', 'keydown'].forEach(e => 
+            document.addEventListener(e, unlock, true)
+        );
+
+        function PatchedAudioContext(...args) {
+            const ctx = new OriginalAudioContext(...args);
+            if (!interactionReady) {
+                if (ctx.state !== 'suspended') {
+                    ctx.suspend && ctx.suspend();
+                }
+            }
+            return ctx;
+        }
+        PatchedAudioContext.prototype = OriginalAudioContext.prototype;
+        
+        window.AudioContext = PatchedAudioContext;
+        if (window.webkitAudioContext) window.webkitAudioContext = PatchedAudioContext;
+    }
+})();
+
 /**
  * =====================================================================
  * Note requested regarding Plan.tsx structure and the dark background fix:

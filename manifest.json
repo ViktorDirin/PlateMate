@@ -1,0 +1,16 @@
+{
+  "name": "PlateMate",
+  "short_name": "PlateMate",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#12181f",
+  "theme_color": "#12181f",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
