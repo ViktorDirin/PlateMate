@@ -858,7 +858,7 @@ function renderPlanDetails() {
                 const selectedClass = isSelected ? 'selected' : '';
 
                 stickersHtml += `
-                    <div class="sticker variant-sticker ${selectedClass}" data-variant-id="${variant.id}" data-category-type="${cat}">
+                    <div class="sticker variant-sticker ${selectedClass}" draggable="true" data-variant-id="${variant.id}" data-category-type="${cat}">
                         <span class="sticker-text">${variant.text}</span>
                         <button class="icon-btn edit-sticker-btn" aria-label="Edit">
                             <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -898,19 +898,21 @@ function renderPlanDetails() {
 // Attach standard DOM Event Listeners
 function setupEventListeners() {
     if (starPlanBtn) {
-        starPlanBtn.addEventListener('click', () => {
-            if (!currentPlanId) return;
-            const defaultDietId = localStorage.getItem('plateMate_defaultDietId');
-            if (defaultDietId === currentPlanId) {
-                // Remove default
-                localStorage.removeItem('plateMate_defaultDietId');
-                starPlanBtn.classList.remove('active');
-            } else {
-                // Set new default
-                localStorage.setItem('plateMate_defaultDietId', currentPlanId);
-                starPlanBtn.classList.add('active');
-            }
-        });
+        starPlanBtn.addEventListener('click', toggleStar);
+    }
+
+    function toggleStar() {
+        if (!currentPlanId) return;
+        const defaultDietId = localStorage.getItem('plateMate_defaultDietId');
+        if (defaultDietId === currentPlanId) {
+            // Remove default
+            localStorage.removeItem('plateMate_defaultDietId');
+            starPlanBtn.classList.remove('active');
+        } else {
+            // Set new default
+            localStorage.setItem('plateMate_defaultDietId', currentPlanId);
+            starPlanBtn.classList.add('active');
+        }
     }
 
     const mealLibraryHeader = document.getElementById('meal-library-header');
@@ -918,8 +920,68 @@ function setupEventListeners() {
         mealLibraryHeader.addEventListener('click', () => toggleMealLibrary());
     }
 
+    let draggedVariant = null;
+    let isDraggingSticker = false;
+
+    categoriesContainer.addEventListener('dragstart', (e) => {
+        const sticker = e.target.closest('.variant-sticker');
+        if (sticker && !e.target.closest('.edit-sticker-btn')) {
+            isDraggingSticker = true;
+            draggedVariant = sticker;
+            e.dataTransfer.effectAllowed = 'move';
+            if (e.dataTransfer.setData) e.dataTransfer.setData('text/plain', sticker.dataset.variantId);
+            setTimeout(() => sticker.classList.add('dragging'), 0);
+        } else {
+            e.preventDefault();
+        }
+    });
+
+    categoriesContainer.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const sticker = e.target.closest('.variant-sticker');
+        if (sticker && draggedVariant && sticker !== draggedVariant) {
+            if (sticker.dataset.categoryType === draggedVariant.dataset.categoryType) {
+                const container = sticker.parentNode;
+                const rect = sticker.getBoundingClientRect();
+                const overRightHalf = e.clientX > rect.left + rect.width / 2;
+                if (overRightHalf) {
+                    container.insertBefore(draggedVariant, sticker.nextSibling);
+                } else {
+                    container.insertBefore(draggedVariant, sticker);
+                }
+            }
+        }
+    });
+
+    categoriesContainer.addEventListener('dragend', (e) => {
+        if (draggedVariant) {
+            draggedVariant.classList.remove('dragging');
+            const catType = draggedVariant.dataset.categoryType;
+            const container = draggedVariant.parentNode;
+            const newArray = [];
+            const plan = plans.find(p => p.id === currentPlanId);
+            if (plan && plan.categories[catType]) {
+                const stickers = container.querySelectorAll('.variant-sticker');
+                stickers.forEach(s => {
+                    const id = s.dataset.variantId;
+                    const variantData = plan.categories[catType].find(v => v.id === id);
+                    if (variantData) newArray.push(variantData);
+                });
+                plan.categories[catType] = newArray;
+                saveData();
+            }
+            draggedVariant = null;
+            setTimeout(() => { isDraggingSticker = false; }, 50);
+        }
+    });
+
     // Top-Level Event Delegation for Categories Container (Add food, delete category, edit/select variant)
     categoriesContainer.addEventListener('click', async (e) => {
+        if (isDraggingSticker) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
         // Delete Category check
         const delCatBtn = e.target.closest('.delete-category-btn');
         if (delCatBtn) {
