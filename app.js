@@ -1529,9 +1529,14 @@ function setupEventListeners() {
         timeEditorInput.addEventListener('input', () => {
             let val = timeEditorInput.value.trim();
             
-            // Auto-format 4 digits into HH:mm
+            // Auto-format 3 or 4 digits into HH:mm
             let digitsOnly = val.replace(/\D/g, '');
-            if (digitsOnly.length === 4 && !val.includes(':')) {
+            if (digitsOnly.length === 3 && !val.includes(':')) {
+                const hh = '0' + digitsOnly.slice(0, 1);
+                const mm = digitsOnly.slice(1, 3);
+                timeEditorInput.value = `${hh}:${mm}`;
+                val = timeEditorInput.value;
+            } else if (digitsOnly.length === 4 && !val.includes(':')) {
                 const hh = digitsOnly.slice(0, 2);
                 const mm = digitsOnly.slice(2, 4);
                 timeEditorInput.value = `${hh}:${mm}`;
@@ -1543,7 +1548,7 @@ function setupEventListeners() {
                 timeEditorError.textContent = '';
                 timeEditorSave.disabled = false;
             } else {
-                timeEditorError.textContent = 'Invalid format. Use HH:mm or 4 digits.';
+                timeEditorError.textContent = 'Invalid format. Use HH:mm or 3-4 digits.';
                 timeEditorSave.disabled = true;
             }
         });
