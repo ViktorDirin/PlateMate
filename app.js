@@ -1526,24 +1526,50 @@ function setupEventListeners() {
     }
 
     if (timeEditorInput) {
+        // ── INPUT: only auto-format when exactly 4 raw digits are present ──
         timeEditorInput.addEventListener('input', () => {
-            let val = timeEditorInput.value.trim();
-            
-            // Auto-format 3 or 4 digits into HH:mm
-            let digitsOnly = val.replace(/\D/g, '');
-            if (digitsOnly.length === 3 && !val.includes(':')) {
-                const hh = '0' + digitsOnly.slice(0, 1);
-                const mm = digitsOnly.slice(1, 3);
-                timeEditorInput.value = `${hh}:${mm}`;
-                val = timeEditorInput.value;
-            } else if (digitsOnly.length === 4 && !val.includes(':')) {
+            const raw = timeEditorInput.value;
+            const digitsOnly = raw.replace(/\D/g, '');
+
+            // Only trigger auto-format at exactly 4 digits with no colon yet
+            if (!raw.includes(':') && digitsOnly.length === 4) {
                 const hh = digitsOnly.slice(0, 2);
                 const mm = digitsOnly.slice(2, 4);
                 timeEditorInput.value = `${hh}:${mm}`;
-                val = timeEditorInput.value;
             }
 
-            const regex = /^([01]\d|2[0-3]):?([0-5]\d)$/;
+            // Validate current value
+            const val = timeEditorInput.value;
+            const regex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+            if (val === '' || regex.test(val)) {
+                timeEditorError.textContent = '';
+                timeEditorSave.disabled = false;
+            } else {
+                // Suppress error while still typing (< 4 chars, no colon yet)
+                if (!val.includes(':') && val.replace(/\D/g, '').length < 4) {
+                    timeEditorError.textContent = '';
+                    timeEditorSave.disabled = true;
+                } else {
+                    timeEditorError.textContent = 'Invalid format. Use HH:mm or 3-4 digits.';
+                    timeEditorSave.disabled = true;
+                }
+            }
+        });
+
+        // ── BLUR: handle 3-digit case when user leaves the field ──
+        timeEditorInput.addEventListener('blur', () => {
+            const raw = timeEditorInput.value;
+            const digitsOnly = raw.replace(/\D/g, '');
+
+            if (!raw.includes(':') && digitsOnly.length === 3) {
+                const hh = '0' + digitsOnly.slice(0, 1);
+                const mm = digitsOnly.slice(1, 3);
+                timeEditorInput.value = `${hh}:${mm}`;
+            }
+
+            // Final validation after blur
+            const val = timeEditorInput.value;
+            const regex = /^([01]\d|2[0-3]):([0-5]\d)$/;
             if (val === '' || regex.test(val)) {
                 timeEditorError.textContent = '';
                 timeEditorSave.disabled = false;
