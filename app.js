@@ -343,18 +343,18 @@ async function init() {
         await loadData();
         await saveData(); // Manual push to align DB
         
+        // Always render the main screen in the background so it's ready for "Back" navigation
+        renderMainScreen();
+        
         if (!fastPathRendered) {
-            renderMainScreen();
             const currentDefault = localStorage.getItem('plateMate_defaultDietId');
             if (currentDefault && plans.some(p => p.id === currentDefault)) {
                 openPlan(currentDefault);
             }
         } else {
-            // Re-render in case cloud data changed
+            // Re-render plan details in case cloud data changed
             if (currentPlanId) {
                 renderPlanDetails();
-            } else {
-                renderMainScreen();
             }
         }
 
