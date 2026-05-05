@@ -304,42 +304,77 @@ function renderExtraSnacks(snacks) {
 
 // Bootstrap Application
 async function init() {
-    // Unregister any active service workers to prevent collisions
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(registrations => {
-            for (let registration of registrations) {
-                registration.unregister();
+    initTheme();
+
+    // FAST PATH RENDERING: Instantly load default diet from local storage
+    const defaultDietId = localStorage.getItem('plateMate_defaultDietId');
+    const storedPlansRaw = localStorage.getItem('platemate_plans');
+    let fastPathRendered = false;
+
+    if (defaultDietId && storedPlansRaw) {
+        try {
+            const parsedPlans = JSON.parse(storedPlansRaw);
+            if (parsedPlans.some(p => p.id === defaultDietId)) {
+                plans = parsedPlans; // Assign temporarily for instant render
+                openPlan(defaultDietId);
+                fastPathRendered = true;
             }
-        });
+        } catch (e) {
+            console.error("Fast-path JSON parse failed", e);
+        }
     }
 
-    initTheme();
     setupEventListeners();
     setupLightbox();
-    await loadData();
-    await saveData(); // Manual push to align DB
-    renderMainScreen();
 
-    const defaultDietId = localStorage.getItem('plateMate_defaultDietId');
-    if (defaultDietId && plans.some(p => p.id === defaultDietId)) {
-        openPlan(defaultDietId);
-    }
-    setupRealtime();
+    // Defer non-critical background tasks until UI is visible
+    const runBackgroundTasks = async () => {
+        // Unregister any active service workers to prevent collisions
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+                for (let registration of registrations) {
+                    registration.unregister();
+                }
+            });
+        }
 
-    setInterval(updateLastMealTimer, 60000);
-    updateLastMealTimer();
-
-    // Check Connection
-    supabaseClient.from('diet_plans').select('count', { count: 'exact', head: true })
-        .then(res => {
-            if (res.error) {
-                console.error("Connection Failed:", res.error.message);
-                setSyncStatus(false);
-            } else {
-                console.log("Supabase Connected Successfully!");
-                setSyncStatus(true);
+        await loadData();
+        await saveData(); // Manual push to align DB
+        
+        if (!fastPathRendered) {
+            renderMainScreen();
+            const currentDefault = localStorage.getItem('plateMate_defaultDietId');
+            if (currentDefault && plans.some(p => p.id === currentDefault)) {
+                openPlan(currentDefault);
             }
-        });
+        } else {
+            // Re-render in case cloud data changed
+            if (currentPlanId) renderPlanDetails();
+        }
+
+        setupRealtime();
+
+        setInterval(updateLastMealTimer, 60000);
+        updateLastMealTimer();
+
+        // Check Connection
+        supabaseClient.from('diet_plans').select('count', { count: 'exact', head: true })
+            .then(res => {
+                if (res.error) {
+                    console.error("Connection Failed:", res.error.message);
+                    setSyncStatus(false);
+                } else {
+                    console.log("Supabase Connected Successfully!");
+                    setSyncStatus(true);
+                }
+            });
+    };
+
+    if (window.requestAnimationFrame) {
+        requestAnimationFrame(() => setTimeout(runBackgroundTasks, 0));
+    } else {
+        setTimeout(runBackgroundTasks, 0);
+    }
 }
 
 // Theme Management
@@ -738,13 +773,17 @@ function renderPlanDetails() {
     const streakCounterContainer = document.getElementById('streak-counter-container');
     const streakCountText = document.getElementById('streak-count-text');
     if (streakCounterContainer && streakCountText) {
-        const currentStreak = calculateStreak(plan);
-        if (currentStreak > 0) {
-            streakCountText.textContent = currentStreak + (currentStreak === 1 ? " day in mode" : " days in mode");
-            streakCounterContainer.style.display = 'flex';
-        } else {
-            streakCounterContainer.style.display = 'none';
-        }
+        // Defer streak calculation as it can be computationally heavy on older devices
+        setTimeout(() => {
+            if (currentPlanId !== plan.id) return; // Prevent race conditions
+            const currentStreak = calculateStreak(plan);
+            if (currentStreak > 0) {
+                streakCountText.textContent = currentStreak + (currentStreak === 1 ? " day in mode" : " days in mode");
+                streakCounterContainer.style.display = 'flex';
+            } else {
+                streakCounterContainer.style.display = 'none';
+            }
+        }, 0);
     }
 
     // Render Schedule List
