@@ -311,14 +311,16 @@ async function init() {
     const storedPlansRaw = localStorage.getItem('platemate_plans');
     let fastPathRendered = false;
 
-    if (defaultDietId && storedPlansRaw) {
+    if (storedPlansRaw) {
         try {
             const parsedPlans = JSON.parse(storedPlansRaw);
-            if (parsedPlans.some(p => p.id === defaultDietId)) {
-                plans = parsedPlans; // Assign temporarily for instant render
+            plans = parsedPlans; // Assign temporarily for instant render
+            if (defaultDietId && parsedPlans.some(p => p.id === defaultDietId)) {
                 openPlan(defaultDietId);
-                fastPathRendered = true;
+            } else {
+                renderMainScreen();
             }
+            fastPathRendered = true;
         } catch (e) {
             console.error("Fast-path JSON parse failed", e);
         }
@@ -349,7 +351,11 @@ async function init() {
             }
         } else {
             // Re-render in case cloud data changed
-            if (currentPlanId) renderPlanDetails();
+            if (currentPlanId) {
+                renderPlanDetails();
+            } else {
+                renderMainScreen();
+            }
         }
 
         setupRealtime();
@@ -387,8 +393,13 @@ function initTheme() {
 function setSyncStatus(isSynced) {
     const syncIcon = document.getElementById('sync-status-icon');
     if (syncIcon) {
-        syncIcon.style.color = isSynced ? '#28a745' : '#dc3545';
-        syncIcon.style.filter = isSynced ? 'drop-shadow(0 0 4px rgba(40, 167, 69, 0.6))' : 'none';
+        if (isSynced) {
+            syncIcon.style.color = 'var(--primary-green)';
+            syncIcon.style.filter = 'drop-shadow(0 0 4px var(--primary-green))';
+        } else {
+            syncIcon.style.color = '#dc3545';
+            syncIcon.style.filter = 'none';
+        }
     }
 }
 
