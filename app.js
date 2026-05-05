@@ -390,12 +390,15 @@ function initTheme() {
 }
 
 // Sync Status UI
-function setSyncStatus(isSynced) {
+function setSyncStatus(status) {
     const syncIcon = document.getElementById('sync-status-icon');
     if (syncIcon) {
-        if (isSynced) {
+        if (status === true || status === 'success') {
             syncIcon.style.color = 'var(--primary-green)';
             syncIcon.style.filter = 'drop-shadow(0 0 4px var(--primary-green))';
+        } else if (status === 'uploading') {
+            syncIcon.style.color = 'var(--primary-yellow)';
+            syncIcon.style.filter = 'drop-shadow(0 0 4px var(--primary-yellow))';
         } else {
             syncIcon.style.color = '#dc3545';
             syncIcon.style.filter = 'none';
@@ -523,18 +526,41 @@ async function saveData() {
     if (!plans || plans.length === 0) return;
 
     try {
-        setSyncStatus(false);
-        const payloads = plans.map(p => ({
-            id: p.id || '00000000-0000-0000-0000-000000000000',
-            name: p.name,
-            guidelines: p.guidelines || "",
-            categories: p.categories || {},
-            schedule: p.schedule || {}
-        }));
+        setSyncStatus('uploading');
+        
+        // Use currentPlanId or default diet to target only the active diet
+        const activePlanId = currentPlanId || localStorage.getItem('plateMate_defaultDietId');
+        
+        let payloads = [];
+        if (activePlanId) {
+            const activePlan = plans.find(p => p.id === activePlanId);
+            if (activePlan) {
+                payloads = [{
+                    id: activePlan.id || '00000000-0000-0000-0000-000000000000',
+                    name: activePlan.name,
+                    guidelines: activePlan.guidelines || "",
+                    categories: activePlan.categories || {},
+                    schedule: activePlan.schedule || {}
+                }];
+            }
+        }
+        
+        if (payloads.length === 0) {
+            payloads = plans.map(p => ({
+                id: p.id || '00000000-0000-0000-0000-000000000000',
+                name: p.name,
+                guidelines: p.guidelines || "",
+                categories: p.categories || {},
+                schedule: p.schedule || {}
+            }));
+        }
+
+        console.log(`Supabase Upload Started for plan(s): ${payloads.map(p => p.name).join(', ')}`);
 
         const { error } = await supabaseClient.from('diet_plans').upsert(payloads);
 
         if (!error) {
+            console.log("Supabase Upload Finished. 200 OK.");
             setSyncStatus(true);
         } else {
             throw error;
