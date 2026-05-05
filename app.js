@@ -1142,6 +1142,7 @@ function setupEventListeners() {
     // Back navigation
     backBtn.addEventListener('click', () => {
         currentPlanId = null;
+        renderMainScreen(); // Force refresh of main menu list
         navigateTo('main-screen');
     });
 
