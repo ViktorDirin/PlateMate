@@ -306,23 +306,27 @@ function renderExtraSnacks(snacks) {
 async function init() {
     initTheme();
 
-    // FAST PATH RENDERING: Instantly load default diet from local storage
-    const defaultDietId = localStorage.getItem('plateMate_defaultDietId');
+    // 1) Load data from LocalStorage
     const storedPlansRaw = localStorage.getItem('platemate_plans');
-    let fastPathRendered = false;
+    let localDataRendered = false;
 
     if (storedPlansRaw) {
         try {
-            const parsedPlans = JSON.parse(storedPlansRaw);
-            plans = parsedPlans; // Assign temporarily for instant render
-            if (defaultDietId && parsedPlans.some(p => p.id === defaultDietId)) {
+            plans = JSON.parse(storedPlansRaw);
+            
+            // 2) IMMEDIATELY call renderMainScreen() to ensure it's the base layer
+            renderMainScreen();
+            localDataRendered = true;
+
+            // 3) AFTER that, check if 'plateMate_defaultDietId' exists
+            const defaultDietId = localStorage.getItem('plateMate_defaultDietId');
+            
+            // 4) If it exists, call openPlan(id) as a normal navigation step
+            if (defaultDietId && plans.some(p => p.id === defaultDietId)) {
                 openPlan(defaultDietId);
-            } else {
-                renderMainScreen();
             }
-            fastPathRendered = true;
         } catch (e) {
-            console.error("Fast-path JSON parse failed", e);
+            console.error("Local data parse failed", e);
         }
     }
 
@@ -343,10 +347,10 @@ async function init() {
         await loadData();
         await saveData(); // Manual push to align DB
         
-        // Always render the main screen in the background so it's ready for "Back" navigation
+        // Always re-render the main screen with fresh cloud data
         renderMainScreen();
         
-        if (!fastPathRendered) {
+        if (!localDataRendered) {
             const currentDefault = localStorage.getItem('plateMate_defaultDietId');
             if (currentDefault && plans.some(p => p.id === currentDefault)) {
                 openPlan(currentDefault);
